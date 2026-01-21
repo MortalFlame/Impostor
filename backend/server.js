@@ -21,10 +21,8 @@ const wss = new WebSocketServer({ server });
 const WORDS_FILE = process.env.WORDS_FILE || __dirname + '/words.json';
 const words = JSON.parse(fs.readFileSync(WORDS_FILE, 'utf-8'));
 
-// Lobby structure: lobbyId -> { players: [], phase, secretWord, hint }
-let lobbies = {};
+let lobbies = {}; // lobbyId -> { players: [], phase, secretWord, hint, turnIndex, round1Submissions, round2Submissions }
 
-// Helper
 function getRandomWord() {
     const index = Math.floor(Math.random() * words.length);
     return words[index];
@@ -36,7 +34,6 @@ function broadcast(lobbyId, data) {
     });
 }
 
-// WebSocket connection
 wss.on('connection', (ws) => {
     let currentLobby = null;
     let playerName = null;
@@ -44,7 +41,7 @@ wss.on('connection', (ws) => {
     ws.on('message', (message) => {
         const msg = JSON.parse(message);
 
-        switch (msg.type) {
+        switch(msg.type) {
             case 'joinLobby':
                 playerName = msg.name;
                 let lobbyId = msg.lobbyId;
@@ -56,10 +53,17 @@ wss.on('connection', (ws) => {
                 }
 
                 if (!lobbies[lobbyId]) {
-                    lobbies[lobbyId] = { players: [], phase: 'lobby' };
+                    lobbies[lobbyId] = { 
+                        players: [], 
+                        phase: 'lobby', 
+                        turnIndex: 0, 
+                        round1Submissions: [], 
+                        round2Submissions: [] 
+                    };
                 }
+
                 currentLobby = lobbyId;
-                lobbies[lobbyId].players.push({ name: playerName, ws, role: '', submission: '', vote: '' });
+                lobbies[lobbyId].players.push({ name: playerName, ws, role: '', vote: '' });
 
                 broadcast(currentLobby, { type: 'lobbyUpdate', players: lobbies[currentLobby].players.map(p => p.name) });
                 break;
@@ -71,14 +75,20 @@ wss.on('connection', (ws) => {
 
                 // Assign roles
                 const impostorIndex = Math.floor(Math.random() * lobby.players.length);
-                lobby.players.forEach((p, i) => p.role = (i === impostorIndex) ? 'impostor' : 'civilian');
+                lobby.players.forEach((p,i) => p.role = (i === impostorIndex ? 'impostor' : 'civilian'));
 
                 // Assign secret word
                 const wordPair = getRandomWord();
                 lobby.secretWord = wordPair.word;
                 lobby.hint = wordPair.hint;
 
+                // Initialize round 1
                 lobby.phase = 'round1';
+                lobby.turnIndex = 0;
+                lobby.round1Submissions = [];
+                lobby.round2Submissions = [];
+
+                // Notify all players of roles/word/hint
                 lobby.players.forEach(p => {
                     p.ws.send(JSON.stringify({
                         type: 'gameStart',
@@ -86,42 +96,78 @@ wss.on('connection', (ws) => {
                         word: p.role === 'civilian' ? lobby.secretWord : lobby.hint
                     }));
                 });
+
+                // Notify whose turn it is
+                broadcast(currentLobby, {
+                    type: 'turnUpdate',
+                    submissions: [],
+                    currentPlayer: lobby.players[lobby.turnIndex].name,
+                    phase: lobby.phase
+                });
                 break;
 
             case 'submitWord':
                 if (!currentLobby) return;
-                const lobby1 = lobbies[currentLobby];
-                const player1 = lobby1.players.find(p => p.ws === ws);
-                if (!player1) return;
-                player1.submission = msg.word;
+                const lobbySub = lobbies[currentLobby];
+                const player = lobbySub.players[lobbySub.turnIndex];
 
-                if (lobby1.players.every(p => p.submission)) {
-                    broadcast(currentLobby, {
-                        type: 'roundResult',
-                        round: lobby1.phase,
-                        submissions: lobby1.players.map(p => ({ name: p.name, word: p.submission }))
-                    });
+                // Ensure only current player can submit
+                if (ws !== player.ws) return;
 
-                    if (lobby1.phase === 'round1') {
-                        lobby1.phase = 'round2';
-                        lobby1.players.forEach(p => p.submission = '');
-                    } else if (lobby1.phase === 'round2') {
-                        lobby1.phase = 'voting';
-                        lobby1.players.forEach(p => p.submission = '');
-                        broadcast(currentLobby, { type: 'startVoting', players: lobby1.players.map(p => p.name) });
+                const word = msg.word;
+                if (lobbySub.phase === 'round1') {
+                    lobbySub.round1Submissions.push({ name: player.name, word });
+                } else if (lobbySub.phase === 'round2') {
+                    lobbySub.round2Submissions.push({ name: player.name, word });
+                }
+
+                // Advance turn
+                lobbySub.turnIndex++;
+                let roundComplete = false;
+                if (lobbySub.turnIndex >= lobbySub.players.length) {
+                    roundComplete = true;
+                    if (lobbySub.phase === 'round1') {
+                        lobbySub.phase = 'round2';
+                        lobbySub.turnIndex = 0;
+                        broadcast(currentLobby, {
+                            type: 'roundsSummary',
+                            round1: lobbySub.round1Submissions
+                        });
+                    } else if (lobbySub.phase === 'round2') {
+                        lobbySub.phase = 'voting';
+                        lobbySub.turnIndex = 0;
+                        broadcast(currentLobby, {
+                            type: 'roundsSummary',
+                            round1: lobbySub.round1Submissions,
+                            round2: lobbySub.round2Submissions
+                        });
+                        broadcast(currentLobby, {
+                            type: 'startVoting',
+                            players: lobbySub.players.map(p => p.name)
+                        });
                     }
+                }
+
+                if (lobbySub.phase === 'round1' || lobbySub.phase === 'round2') {
+                    // Broadcast turn update
+                    broadcast(currentLobby, {
+                        type: 'turnUpdate',
+                        submissions: (lobbySub.phase === 'round1' ? lobbySub.round1Submissions : lobbySub.round2Submissions),
+                        currentPlayer: lobbySub.players[lobbySub.turnIndex]?.name || null,
+                        phase: lobbySub.phase
+                    });
                 }
                 break;
 
             case 'vote':
                 if (!currentLobby) return;
-                const lobby2 = lobbies[currentLobby];
-                const player2 = lobby2.players.find(p => p.ws === ws);
-                player2.vote = msg.vote;
+                const lobbyVote = lobbies[currentLobby];
+                const voter = lobbyVote.players.find(p => p.ws === ws);
+                voter.vote = msg.vote;
 
-                if (lobby2.players.every(p => p.vote)) {
+                if (lobbyVote.players.every(p => p.vote)) {
                     const votesCount = {};
-                    lobby2.players.forEach(p => votesCount[p.vote] = (votesCount[p.vote] || 0) + 1);
+                    lobbyVote.players.forEach(p => votesCount[p.vote] = (votesCount[p.vote] || 0) + 1);
 
                     let maxVotes = 0;
                     let selected = '';
@@ -132,20 +178,23 @@ wss.on('connection', (ws) => {
                         }
                     }
 
-                    const impostor = lobby2.players.find(p => p.role === 'impostor').name;
+                    const impostor = lobbyVote.players.find(p => p.role === 'impostor').name;
                     const civiliansWin = selected === impostor;
 
                     broadcast(currentLobby, {
                         type: 'gameEnd',
                         impostor,
-                        secretWord: lobby2.secretWord,
+                        secretWord: lobbyVote.secretWord,
                         selected,
                         civiliansWin
                     });
 
                     // Reset for next game
-                    lobby2.phase = 'lobby';
-                    lobby2.players.forEach(p => { p.role = ''; p.submission = ''; p.vote = ''; });
+                    lobbyVote.phase = 'lobby';
+                    lobbyVote.players.forEach(p => { p.role = ''; p.vote = ''; });
+                    lobbyVote.turnIndex = 0;
+                    lobbyVote.round1Submissions = [];
+                    lobbyVote.round2Submissions = [];
                 }
                 break;
         }
