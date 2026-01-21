@@ -4,47 +4,95 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Impostor Word Game</title>
+<link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin:0; padding:0; display:flex; justify-content:center; background:linear-gradient(to bottom,#a1c4fd,#c2e9fb); min-height:100vh; }
-.container { width:95%; max-width:480px; background:#ffffffee; border-radius:12px; padding:20px; margin:20px 0; box-shadow:0 6px 12px rgba(0,0,0,0.15); text-align:center; }
-h2 { color:#333; margin-bottom:12px; } h3 { margin:10px 0 6px; color:#555; }
-input { padding:8px; margin:5px 0; width:90%; border-radius:6px; border:1px solid #ccc; }
-button { padding:10px 16px; margin:6px; border-radius:8px; border:none; cursor:pointer; font-weight:bold; transition:0.2s; }
+* { box-sizing: border-box; margin:0; padding:0; }
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display:flex; justify-content:center; background: linear-gradient(to bottom,#a1c4fd,#c2e9fb); min-height:100vh; }
+
+.container {
+    width:95%;
+    max-width:480px;
+    background: #ffffffee;
+    border-radius: 12px;
+    padding: 20px;
+    margin: 20px 0;
+    box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+    display:flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+h2 { color:#333; margin-bottom:16px; font-weight:700; }
+h3 { margin:12px 0 8px; color:#555; }
+input {
+    padding:10px;
+    margin:6px 0;
+    width: 90%;
+    border-radius:6px;
+    border:1px solid #ccc;
+    font-size:1rem;
+}
+button {
+    padding:10px 16px;
+    margin:6px;
+    border-radius:8px;
+    border:none;
+    cursor:pointer;
+    font-weight:bold;
+    transition:0.2s;
+    font-size:1rem;
+}
 button:hover { opacity:0.85; }
-#joinBtn { background-color:#4CAF50; color:white; } #startBtn { background-color:#2196F3; color:white; } #submitWordBtn { background-color:#ff9800; color:white; } .voteButton { background-color:#e91e63; color:white; } #restartBtn { background-color:#673ab7; color:white; }
-#roundSubmissions div { margin:8px 0; padding:6px; background:#f0f0f0; border-radius:6px; }
-#currentTurn { font-weight:bold; margin:10px 0; color:#444; } #countdown { font-size:18px; color:#d32f2f; margin:10px 0; }
-@media(max-width:400px){ input{width:95%;} button{width:90%;} }
-.green{color:green;} .red{color:red;}
+#joinBtn { background-color:#4CAF50; color:white; } 
+#startBtn { background-color:#2196F3; color:white; } 
+#submitWordBtn { background-color:#ff9800; color:white; } 
+.voteButton { background-color:#e91e63; color:white; } 
+#restartBtn { background-color:#673ab7; color:white; }
+
+#roundSubmissions div, #results p { margin:6px 0; padding:6px; background:#f0f0f0; border-radius:6px; word-wrap:break-word; }
+#currentTurn { font-weight:bold; margin:12px 0; color:#444; font-size:1.1rem; }
+#countdown { font-size:1.2rem; color:#d32f2f; margin:10px 0; font-weight:bold; }
+.green{color:green; font-weight:bold;} 
+.red{color:red; font-weight:bold;}
+
+@media(max-width:400px){
+    input, button { width: 95%; font-size:1rem; }
+}
 </style>
 </head>
 <body>
 <div class="container" id="lobbyScreen">
-<h2>Join Lobby</h2>
-<input id="nickname" placeholder="Enter your nickname"><br>
-<input id="lobbyId" placeholder="Lobby code (optional)"><br>
-<button id="joinBtn">Join Lobby</button>
-<button id="startBtn" disabled>Start Game</button>
-<div id="lobbyCodeDisplay"></div>
-<h3>Players in Lobby:</h3>
-<div id="playersList"></div>
+    <h2>Join Lobby</h2>
+    <input id="nickname" placeholder="Enter your nickname">
+    <input id="lobbyId" placeholder="Lobby code (optional)">
+    <button id="joinBtn">Join Lobby</button>
+    <button id="startBtn" disabled>Start Game</button>
+    <div id="lobbyCodeDisplay" style="margin:8px 0;font-weight:bold;"></div>
+    <h3>Players in Lobby:</h3>
+    <div id="playersList"></div>
 </div>
 
 <div class="container" id="gameScreen" style="display:none;">
-<h2>Game Screen</h2>
-<div id="roleInfo"></div>
-<div id="wordPrompt"></div>
-<div id="currentTurn"></div>
-<div id="countdown"></div>
-<input id="wordInput" placeholder="Enter your word">
-<button id="submitWordBtn">Submit Word</button>
+    <h2>Game Screen</h2>
+    <div id="roleInfo"></div>
+    <div id="wordPrompt" style="margin:8px 0;"></div>
+    <div id="currentTurn"></div>
+    <div id="countdown"></div>
+    <input id="wordInput" placeholder="Enter your word">
+    <button id="submitWordBtn">Submit Word</button>
 
-<div id="roundSubmissions"></div>
-<div id="voting" style="display:none;"><h3>Vote for the impostor:</h3><div id="voteButtons"></div></div>
+    <div id="roundSubmissions"></div>
 
-<div id="results" style="display:none;"></div>
-<button id="restartBtn" style="display:none;">Restart Game</button>
-<script src="app.js"></script>
+    <div id="voting" style="display:none;">
+        <h3>Vote for the impostor:</h3>
+        <div id="voteButtons"></div>
+    </div>
+
+    <div id="results" style="display:none;"></div>
+    <button id="restartBtn" style="display:none;">Restart Game</button>
 </div>
+
+<script src="app.js"></script>
 </body>
 </html>
