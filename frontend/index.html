@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Impostor Word Game</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+    <div id="lobbyScreen">
+        <h1>Impostor Word Game</h1>
+        <input type="text" id="nickname" placeholder="Enter nickname">
+        <input type="text" id="lobbyId" placeholder="Lobby ID">
+        <button id="joinBtn">Join Lobby</button>
+        <div id="playersList"></div>
+        <button id="startBtn" disabled>Start Game</button>
+    </div>
+
+    <div id="gameScreen" style="display:none;">
+        <h2 id="roleInfo"></h2>
+        <div id="wordPrompt"></div>
+        <input type="text" id="wordInput" placeholder="Enter a word or phrase">
+        <button id="submitWordBtn">Submit</button>
+        <div id="roundSubmissions"></div>
+        <div id="voting" style="display:none;">
+            <h3>Vote for the impostor</h3>
+            <div id="voteButtons"></div>
+        </div>
+        <div id="results" style="display:none;"></div>
+    </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
