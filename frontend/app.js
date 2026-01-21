@@ -20,6 +20,7 @@ const votingDiv = document.getElementById('voting');
 const voteButtonsDiv = document.getElementById('voteButtons');
 const resultsDiv = document.getElementById('results');
 const currentTurnDiv = document.getElementById('currentTurn');
+const restartBtn = document.getElementById('restartBtn');
 
 // Join lobby
 joinBtn.onclick = () => {
@@ -41,7 +42,7 @@ joinBtn.onclick = () => {
         const data = JSON.parse(msg.data);
 
         if (data.type === 'lobbyAssigned') {
-            lobbyCodeDisplay.textContent = `Your lobby code: ${data.lobbyId} (share this to friends)`;
+            lobbyCodeDisplay.textContent = `Your lobby code: ${data.lobbyId}`;
             lobbyInput.value = data.lobbyId;
             lobbyId = data.lobbyId;
         }
@@ -64,19 +65,20 @@ joinBtn.onclick = () => {
             roundSubmissions.innerHTML = '';
             votingDiv.style.display = 'none';
             resultsDiv.style.display = 'none';
+            restartBtn.style.display = 'none';
         }
 
         if (data.type === 'turnUpdate') {
             const submissionsList = data.submissions.map(s => `${s.name}: ${s.word}`).join('\n');
             roundSubmissions.textContent = submissionsList;
             currentTurnDiv.textContent = data.currentPlayer ? `Current turn: ${data.currentPlayer}` : '';
-            // Enable input only for current player
             wordInput.disabled = (data.currentPlayer !== playerName);
             submitWordBtn.disabled = (data.currentPlayer !== playerName);
         }
 
         if (data.type === 'roundsSummary') {
-            let html = '<h3>Rounds Summary</h3>';
+            let html = '';
+            if (resultsDiv.innerHTML) html += '<hr>';
             if (data.round1) {
                 html += '<strong>Round 1:</strong><br>';
                 data.round1.forEach(s => { html += `${s.name}: ${s.word}<br>`; });
@@ -95,6 +97,7 @@ joinBtn.onclick = () => {
                 if (name !== playerName) {
                     const btn = document.createElement('button');
                     btn.textContent = name;
+                    btn.className = 'voteButton';
                     btn.onclick = () => {
                         ws.send(JSON.stringify({ type: 'vote', vote: name }));
                         Array.from(voteButtonsDiv.children).forEach(b => b.disabled = true);
@@ -112,14 +115,13 @@ joinBtn.onclick = () => {
                 <p>Secret Word: ${data.secretWord}</p>
                 <p>${data.civiliansWin ? 'Civilians Win!' : 'Impostor Wins!'}</p>
             `;
+            restartBtn.style.display = 'inline-block';
         }
     };
 };
 
-// Start game button
-startBtn.onclick = () => {
-    ws.send(JSON.stringify({ type: 'startGame' }));
-};
+// Start game
+startBtn.onclick = () => ws.send(JSON.stringify({ type: 'startGame' }));
 
 // Submit word
 submitWordBtn.onclick = () => {
@@ -127,4 +129,10 @@ submitWordBtn.onclick = () => {
     if (!word) return;
     ws.send(JSON.stringify({ type: 'submitWord', word }));
     wordInput.value = '';
+};
+
+// Restart game
+restartBtn.onclick = () => {
+    ws.send(JSON.stringify({ type: 'startGame' }));
+    restartBtn.style.display = 'none';
 };
