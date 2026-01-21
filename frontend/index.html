@@ -4,32 +4,44 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Impostor Word Game</title>
-<link rel="stylesheet" href="style.css">
+<style>
+  body { font-family: Arial, sans-serif; padding: 10px; background: #f4f4f4; }
+  #gameScreen, #voting, #results { margin-top: 20px; }
+  button { margin: 5px; padding: 8px 12px; }
+  input { padding: 6px; margin: 5px; width: 80%; }
+  h3 { margin: 10px 0 5px; }
+  div { margin: 2px 0; }
+</style>
 </head>
 <body>
-<div id="app">
-    <div id="lobbyScreen">
-        <h1>Impostor Word Game</h1>
-        <input type="text" id="nickname" placeholder="Enter nickname">
-        <input type="text" id="lobbyId" placeholder="Lobby ID">
-        <button id="joinBtn">Join Lobby</button>
-        <div id="playersList"></div>
-        <button id="startBtn" disabled>Start Game</button>
-    </div>
 
-    <div id="gameScreen" style="display:none;">
-        <h2 id="roleInfo"></h2>
-        <div id="wordPrompt"></div>
-        <input type="text" id="wordInput" placeholder="Enter a word or phrase">
-        <button id="submitWordBtn">Submit</button>
-        <div id="roundSubmissions"></div>
-        <div id="voting" style="display:none;">
-            <h3>Vote for the impostor</h3>
-            <div id="voteButtons"></div>
-        </div>
-        <div id="results" style="display:none;"></div>
-    </div>
+<div id="lobbyScreen">
+  <h2>Join Lobby</h2>
+  <input id="nickname" placeholder="Enter your nickname"><br>
+  <input id="lobbyId" placeholder="Lobby code (optional)"><br>
+  <button id="joinBtn">Join Lobby</button>
+  <button id="startBtn" disabled>Start Game</button>
+  <h3>Players in Lobby:</h3>
+  <div id="playersList"></div>
 </div>
+
+<div id="gameScreen" style="display:none;">
+  <h2>Game Screen</h2>
+  <div id="roleInfo"></div>
+  <div id="wordPrompt"></div>
+  <input id="wordInput" placeholder="Enter your word">
+  <button id="submitWordBtn">Submit Word</button>
+
+  <div id="roundSubmissions"></div>
+
+  <div id="voting" style="display:none;">
+    <h3>Vote for the impostor:</h3>
+    <div id="voteButtons"></div>
+  </div>
+
+  <div id="results" style="display:none;"></div>
+</div>
+
 <script src="app.js"></script>
 </body>
 </html>
