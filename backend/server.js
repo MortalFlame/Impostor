@@ -2,12 +2,12 @@ const express = require('express');
 const cors = require('cors');
 const { WebSocketServer } = require('ws');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Use Render-assigned port or fallback to 3000 locally
 const PORT = process.env.PORT || 3000;
 const FRONTEND_DIR = process.env.FRONTEND_DIR || '../frontend';
 app.use(express.static(FRONTEND_DIR));
@@ -16,7 +16,6 @@ const server = app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
 
-// WebSocket server
 const wss = new WebSocketServer({ server });
 
 // Load words
@@ -24,10 +23,19 @@ const WORDS_FILE = process.env.WORDS_FILE || __dirname + '/words.json';
 const words = JSON.parse(fs.readFileSync(WORDS_FILE, 'utf-8'));
 
 let lobbies = {}; // lobbyId -> lobby state
+let usedWordIndexes = []; // Track previously used words
 
+// Random word selection avoiding repeats
 function getRandomWord() {
-    const index = Math.floor(Math.random() * words.length);
-    return words[index];
+    if (usedWordIndexes.length >= words.length) {
+        usedWordIndexes = []; // reset if all words used
+    }
+
+    let availableIndexes = words.map((_, i) => i).filter(i => !usedWordIndexes.includes(i));
+    const randomIndex = availableIndexes[crypto.randomInt(0, availableIndexes.length)];
+    usedWordIndexes.push(randomIndex);
+
+    return words[randomIndex];
 }
 
 function broadcast(lobbyId, data) {
@@ -48,7 +56,6 @@ wss.on('connection', (ws) => {
                 playerName = msg.name;
                 let lobbyId = msg.lobbyId;
 
-                // Assign random lobby code if none provided
                 if (!lobbyId) {
                     lobbyId = Math.floor(1000 + Math.random() * 9000).toString();
                     ws.send(JSON.stringify({ type: 'lobbyAssigned', lobbyId }));
@@ -75,11 +82,10 @@ wss.on('connection', (ws) => {
                 const lobby = lobbies[currentLobby];
                 if (lobby.players.length < 3) return;
 
-                // Assign roles
-                const impostorIndex = Math.floor(Math.random() * lobby.players.length);
+                const impostorIndex = crypto.randomInt(0, lobby.players.length);
                 lobby.players.forEach((p,i) => p.role = (i === impostorIndex ? 'impostor' : 'civilian'));
 
-                // Assign secret word
+                // Assign truly random word
                 const wordPair = getRandomWord();
                 lobby.secretWord = wordPair.word;
                 lobby.hint = wordPair.hint;
@@ -111,7 +117,7 @@ wss.on('connection', (ws) => {
                 if (!currentLobby) return;
                 const lobbySub = lobbies[currentLobby];
                 const player = lobbySub.players[lobbySub.turnIndex];
-                if (ws !== player.ws) return; // Only current player
+                if (ws !== player.ws) return;
 
                 const word = msg.word;
                 if (lobbySub.phase === 'round1') lobbySub.round1Submissions.push({ name: player.name, word });
@@ -122,10 +128,7 @@ wss.on('connection', (ws) => {
                     if (lobbySub.phase === 'round1') {
                         lobbySub.phase = 'round2';
                         lobbySub.turnIndex = 0;
-                        broadcast(currentLobby, {
-                            type: 'roundsSummary',
-                            round1: lobbySub.round1Submissions
-                        });
+                        broadcast(currentLobby, { type: 'roundsSummary', round1: lobbySub.round1Submissions });
                     } else if (lobbySub.phase === 'round2') {
                         lobbySub.phase = 'voting';
                         lobbySub.turnIndex = 0;
@@ -134,10 +137,7 @@ wss.on('connection', (ws) => {
                             round1: lobbySub.round1Submissions,
                             round2: lobbySub.round2Submissions
                         });
-                        broadcast(currentLobby, {
-                            type: 'startVoting',
-                            players: lobbySub.players.map(p => p.name)
-                        });
+                        broadcast(currentLobby, { type: 'startVoting', players: lobbySub.players.map(p => p.name) });
                     }
                 }
 
