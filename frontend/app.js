@@ -20,6 +20,7 @@ const votingDiv = document.getElementById('voting');
 const voteButtonsDiv = document.getElementById('voteButtons');
 const resultsDiv = document.getElementById('results');
 const currentTurnDiv = document.getElementById('currentTurn');
+const countdownDiv = document.getElementById('countdown');
 const restartBtn = document.getElementById('restartBtn');
 
 // Join lobby
@@ -66,6 +67,7 @@ joinBtn.onclick = () => {
             votingDiv.style.display = 'none';
             resultsDiv.style.display = 'none';
             restartBtn.style.display = 'none';
+            countdownDiv.textContent = '';
         }
 
         if (data.type === 'turnUpdate') {
@@ -78,7 +80,6 @@ joinBtn.onclick = () => {
 
         if (data.type === 'roundsSummary') {
             let html = '';
-            if (resultsDiv.innerHTML) html += '<hr>';
             if (data.round1) {
                 html += '<strong>Round 1:</strong><br>';
                 data.round1.forEach(s => { html += `${s.name}: ${s.word}<br>`; });
@@ -116,6 +117,12 @@ joinBtn.onclick = () => {
                 <p>${data.civiliansWin ? 'Civilians Win!' : 'Impostor Wins!'}</p>
             `;
             restartBtn.style.display = 'inline-block';
+            votingDiv.style.display = 'none';
+        }
+
+        if (data.type === 'countdown') {
+            countdownDiv.textContent = `Next phase in: ${data.countdown}s`;
+            if (data.countdown <= 0) countdownDiv.textContent = '';
         }
     };
 };
@@ -135,4 +142,5 @@ submitWordBtn.onclick = () => {
 restartBtn.onclick = () => {
     ws.send(JSON.stringify({ type: 'startGame' }));
     restartBtn.style.display = 'none';
+    countdownDiv.textContent = '';
 };
