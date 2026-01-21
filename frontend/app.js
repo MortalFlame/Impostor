@@ -40,12 +40,14 @@ joinBtn.onclick = () => {
     ws.onmessage = (msg) => {
         const data = JSON.parse(msg.data);
 
+        // Lobby assigned
         if (data.type === 'lobbyAssigned') {
             lobbyCodeDisplay.textContent = `Your lobby code: ${data.lobbyId}`;
             lobbyInput.value = data.lobbyId;
             lobbyId = data.lobbyId;
         }
 
+        // Lobby update
         if (data.type === 'lobbyUpdate') {
             playersList.innerHTML = '';
             data.players.forEach(p => {
@@ -56,6 +58,7 @@ joinBtn.onclick = () => {
             startBtn.disabled = data.players.length < 3;
         }
 
+        // Game start
         if (data.type === 'gameStart') {
             lobbyScreen.style.display = 'none';
             gameScreen.style.display = 'flex';
@@ -69,20 +72,30 @@ joinBtn.onclick = () => {
             countdownDiv.textContent='';
         }
 
+        // Turn update (Round 1 + Round 2)
         if (data.type === 'turnUpdate') {
-            let html='';
-            if (data.phase==='round2' && data.round1Submissions) {
-                html+='<strong>Round 1:</strong><br>';
-                data.round1Submissions.forEach(s=>html+=`${s.name}: ${s.word}<br>`);
-                html+='<strong>Round 2:</strong><br>';
+            let html = '';
+
+            // Always show Round 1 submissions
+            if (data.round1Submissions && data.round1Submissions.length>0){
+                html += '<strong>Round 1:</strong><br>';
+                data.round1Submissions.forEach(s => { html+=`${s.name}: ${s.word}<br>`; });
             }
-            html+=data.submissions.map(s=>`${s.name}: ${s.word}`).join('<br>');
-            roundSubmissions.innerHTML=html;
-            currentTurnDiv.textContent=data.currentPlayer?`Current turn: ${data.currentPlayer}`:'';
-            wordInput.disabled=(data.currentPlayer!==playerName);
-            submitWordBtn.disabled=(data.currentPlayer!==playerName);
+
+            // Show Round 2 submissions so far
+            if (data.phase==='round2' && data.submissions.length>0){
+                html += '<strong>Round 2:</strong><br>';
+                data.submissions.forEach(s => { html+=`${s.name}: ${s.word}<br>`; });
+            }
+
+            roundSubmissions.innerHTML = html;
+
+            currentTurnDiv.textContent = data.currentPlayer?`Current turn: ${data.currentPlayer}`:'';
+            wordInput.disabled = (data.currentPlayer!==playerName);
+            submitWordBtn.disabled = (data.currentPlayer!==playerName);
         }
 
+        // Rounds summary (after rounds end)
         if (data.type === 'roundsSummary') {
             let html='';
             if(data.round1){ html+='<strong>Round 1:</strong><br>'; data.round1.forEach(s=>html+=`${s.name}: ${s.word}<br>`);}
@@ -90,6 +103,7 @@ joinBtn.onclick = () => {
             roundSubmissions.innerHTML=html;
         }
 
+        // Voting phase
         if (data.type === 'startVoting') {
             votingDiv.style.display='block';
             voteButtonsDiv.innerHTML='';
@@ -107,6 +121,7 @@ joinBtn.onclick = () => {
             });
         }
 
+        // Game end
         if (data.type === 'gameEnd') {
             resultsDiv.style.display='block';
             resultsDiv.innerHTML='<h3>Game Over</h3>';
@@ -120,6 +135,7 @@ joinBtn.onclick = () => {
             votingDiv.style.display='none';
         }
 
+        // Countdown display (optional)
         if(data.type==='countdown') countdownDiv.textContent=`Next phase in: ${data.countdown}s`;
     };
 };
