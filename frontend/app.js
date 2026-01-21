@@ -7,6 +7,7 @@ const startBtn = document.getElementById('startBtn');
 const nicknameInput = document.getElementById('nickname');
 const lobbyInput = document.getElementById('lobbyId');
 const playersList = document.getElementById('playersList');
+const lobbyCodeDisplay = document.getElementById('lobbyCodeDisplay');
 
 const lobbyScreen = document.getElementById('lobbyScreen');
 const gameScreen = document.getElementById('gameScreen');
@@ -18,6 +19,7 @@ const roundSubmissions = document.getElementById('roundSubmissions');
 const votingDiv = document.getElementById('voting');
 const voteButtonsDiv = document.getElementById('voteButtons');
 const resultsDiv = document.getElementById('results');
+const currentTurnDiv = document.getElementById('currentTurn');
 
 // Join lobby
 joinBtn.onclick = () => {
@@ -38,14 +40,12 @@ joinBtn.onclick = () => {
     ws.onmessage = (msg) => {
         const data = JSON.parse(msg.data);
 
-        // Random lobby assigned to first player
         if (data.type === 'lobbyAssigned') {
-            alert(`Your lobby code is: ${data.lobbyId}\nShare this code with friends to join.`);
+            lobbyCodeDisplay.textContent = `Your lobby code: ${data.lobbyId} (share this to friends)`;
             lobbyInput.value = data.lobbyId;
             lobbyId = data.lobbyId;
         }
 
-        // Lobby update
         if (data.type === 'lobbyUpdate') {
             playersList.innerHTML = '';
             data.players.forEach(p => {
@@ -56,7 +56,6 @@ joinBtn.onclick = () => {
             startBtn.disabled = data.players.length < 3;
         }
 
-        // Game start
         if (data.type === 'gameStart') {
             lobbyScreen.style.display = 'none';
             gameScreen.style.display = 'block';
@@ -67,17 +66,28 @@ joinBtn.onclick = () => {
             resultsDiv.style.display = 'none';
         }
 
-        // Round submissions
-        if (data.type === 'roundResult') {
-            roundSubmissions.innerHTML = `<h3>Round ${data.round} Submissions:</h3>`;
-            data.submissions.forEach(s => {
-                const div = document.createElement('div');
-                div.textContent = `${s.name}: ${s.word}`;
-                roundSubmissions.appendChild(div);
-            });
+        if (data.type === 'turnUpdate') {
+            const submissionsList = data.submissions.map(s => `${s.name}: ${s.word}`).join('\n');
+            roundSubmissions.textContent = submissionsList;
+            currentTurnDiv.textContent = data.currentPlayer ? `Current turn: ${data.currentPlayer}` : '';
+            // Enable input only for current player
+            wordInput.disabled = (data.currentPlayer !== playerName);
+            submitWordBtn.disabled = (data.currentPlayer !== playerName);
         }
 
-        // Voting phase
+        if (data.type === 'roundsSummary') {
+            let html = '<h3>Rounds Summary</h3>';
+            if (data.round1) {
+                html += '<strong>Round 1:</strong><br>';
+                data.round1.forEach(s => { html += `${s.name}: ${s.word}<br>`; });
+            }
+            if (data.round2) {
+                html += '<strong>Round 2:</strong><br>';
+                data.round2.forEach(s => { html += `${s.name}: ${s.word}<br>`; });
+            }
+            roundSubmissions.innerHTML = html;
+        }
+
         if (data.type === 'startVoting') {
             votingDiv.style.display = 'block';
             voteButtonsDiv.innerHTML = '';
@@ -94,7 +104,6 @@ joinBtn.onclick = () => {
             });
         }
 
-        // Game results
         if (data.type === 'gameEnd') {
             resultsDiv.style.display = 'block';
             resultsDiv.innerHTML = `
