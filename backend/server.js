@@ -69,7 +69,22 @@ function startGame(lobby) {
 
 wss.on('connection', ws => {
   let lobbyId, player;
+ws.on('close', () => {
+  if (player) {
+    player.connected = false;
 
+    const lobby = lobbies[lobbyId];
+    if (lobby) {
+      broadcast(lobby, {
+        type: 'playerStatus',
+        players: lobby.players.map(p => ({
+          name: p.name,
+          connected: p.connected
+        }))
+      });
+    }
+  }
+});
   ws.on('message', raw => {
     const msg = JSON.parse(raw);
 
@@ -80,12 +95,26 @@ wss.on('connection', ws => {
 
       player = lobby.players.find(p => p.id === msg.playerId);
       if (!player) {
-        player = { id: msg.playerId, name: msg.name, ws };
-        lobby.players.push(player);
-      } else {
-        player.ws = ws;
-      }
-
+  player = {
+    id: msg.playerId,
+    name: msg.name,
+    ws,
+    connected: true
+  };
+  lobby.players.push(player);
+} else {
+  // reconnect
+  player.ws = ws;
+  player.connected = true;
+}
+// BROADCAST CONNECTION STATUS TO ALL PLAYERS
+broadcast(lobby, {
+  type: 'playerStatus',
+  players: lobby.players.map(p => ({
+    name: p.name,
+    connected: p.connected
+  }))
+});
       ws.send(JSON.stringify({ type: 'lobbyAssigned', lobbyId }));
       broadcast(lobby, { type: 'lobbyUpdate', players: lobby.players.map(p => p.name) });
       return;
@@ -104,10 +133,14 @@ wss.on('connection', ws => {
       const entry = { name: player.name, word: msg.word };
       lobby.phase === 'round1' ? lobby.round1.push(entry) : lobby.round2.push(entry);
 
-      lobby.turn++;
+      do {
+  lobby.turn++;
+  if (lobby.turn >= lobby.players.length) lobby.turn = 0;
+  
+  // If we've looped over all players and no one is connected, break
+  if (lobby.players.every(p => !p.connected)) break;
 
-      if (lobby.turn >= lobby.players.length) {
-        lobby.turn = 0;
+} while (!lobby.players[lobby.turn].connected);
         if (lobby.phase === 'round1') lobby.phase = 'round2';
         else lobby.phase = 'voting';
       }
