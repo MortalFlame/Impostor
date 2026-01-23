@@ -63,12 +63,16 @@ function connect() {
       lobbyCard.classList.add('hidden');
       gameCard.classList.remove('hidden');
       
-      // --- CHANGED: Reset UI for new game ---
+      // Reset UI for new game
       results.innerHTML = ''; 
       restart.classList.add('hidden');
       restart.style.opacity = '1';
       restart.innerText = 'Restart Game';
-      // --------------------------------------
+      
+      // Reset input and submit
+      input.value = '';
+      input.placeholder = 'Your word';
+      submit.disabled = false;
 
       roleReveal.classList.remove('hidden');
       roleBack.className = `role-back ${d.role}`;
@@ -81,28 +85,41 @@ function connect() {
     }
 
     if (d.type === 'turnUpdate') {
-      // persist round 1 words during round 2
+      // Update round displays
       round1El.innerHTML = d.round1.map(r => `${r.name}: ${capitalize(r.word)}`).join('<br>');
       round2El.innerHTML = d.round2.map(r => `${r.name}: ${capitalize(r.word)}`).join('<br>');
-
-      turnEl.textContent = `Turn: ${d.currentPlayer}`;
-      submit.disabled = d.currentPlayer !== nickname.value;
+      
+      // Handle end of round 2 transition
+      if (d.currentPlayer === 'Voting Phase') {
+        turnEl.textContent = 'Round Complete - Voting Starting...';
+        submit.disabled = true;
+        input.placeholder = 'Get ready to vote...';
+        input.value = '';
+      } else {
+        turnEl.textContent = `Turn: ${d.currentPlayer}`;
+        submit.disabled = d.currentPlayer !== nickname.value;
+        input.placeholder = d.currentPlayer === nickname.value 
+          ? 'Your word' 
+          : `Waiting for ${d.currentPlayer}...`;
+      }
     }
 
     if (d.type === 'startVoting') {
-      // --- ADD THIS LINE to clear the old turn display ---
-      turnEl.textContent = '';
-      // 
+      // Clear the turn display when voting starts
+      turnEl.textContent = 'Vote for the Impostor!';
+      input.value = '';
+      input.placeholder = 'Voting in progress...';
+      submit.disabled = true;
+      
       voting.innerHTML = '<h3>Vote</h3>' +
         d.players
           .filter(p => p !== nickname.value)
-          // --- CHANGED: Add class and pass 'this' ---
           .map(p => `<button class="vote-btn" onclick="vote('${p}', this)">${p}</button>`)
           .join('');
     }
 
     if (d.type === 'gameEnd') {
-      // --- CHANGED: Show winner and restart button ---
+      // Show winner and restart button
       const winnerColor = d.winner === 'Civilians' ? '#2ecc71' : '#e74c3c';
       
       results.innerHTML =
@@ -118,6 +135,7 @@ function connect() {
 
       voting.innerHTML = '';
       restart.classList.remove('hidden');
+      turnEl.textContent = 'Game Over - Results';
     }
   };
 
@@ -129,14 +147,14 @@ join.onclick = connect;
 start.onclick = () => ws.send(JSON.stringify({ type: 'startGame' }));
 
 submit.onclick = () => {
-  if (!input.value) return;
-  ws.send(JSON.stringify({ type: 'submitWord', word: input.value }));
+  if (!input.value.trim()) return;
+  ws.send(JSON.stringify({ type: 'submitWord', word: input.value.trim() }));
   input.value = '';
 };
 
 restart.onclick = () => {
   ws.send(JSON.stringify({ type: 'restart' }));
-  // --- CHANGED: Visual feedback ---
+  // Visual feedback
   restart.style.opacity = '0.5';
   restart.innerText = 'Waiting for others...';
 };
@@ -144,12 +162,13 @@ restart.onclick = () => {
 window.vote = (v, btnElement) => {
   ws.send(JSON.stringify({ type: 'vote', vote: v }));
   
-  // --- CHANGED: Visual feedback (grey out others) ---
+  // Visual feedback (grey out others)
   const buttons = document.querySelectorAll('.vote-btn');
   buttons.forEach(b => {
     if (b === btnElement) {
       b.style.background = '#fff';
       b.style.color = '#000';
+      b.style.fontWeight = 'bold';
     } else {
       b.style.opacity = '0.3';
       b.style.pointerEvents = 'none';
