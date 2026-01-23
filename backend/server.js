@@ -3,18 +3,22 @@ const cors = require('cors');
 const { WebSocketServer } = require('ws');
 const fs = require('fs');
 const crypto = require('crypto');
+const path = require('path');
 
 const app = express();
 app.use(cors());
-app.use(express.static('frontend'));
+app.use(express.static(path.join(__dirname, '../frontend')));
 
 const PORT = process.env.PORT || 10000;
-const server = app.listen(PORT, () => console.log('Server running'));
+const server = app.listen(PORT, () =>
+  console.log(`Server running on ${PORT}`)
+);
+
 const wss = new WebSocketServer({ server });
 
-const words = JSON.parse(fs.readFileSync('./words.json', 'utf8'));
-
-const RECONNECT_TIMEOUT = 30000;
+const words = JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'words.json'), 'utf8')
+);
 
 const PHASES = {
   LOBBY: 'lobby',
@@ -26,10 +30,6 @@ const PHASES = {
 
 let lobbies = {};
 
-function randomWord() {
-  return words[crypto.randomInt(words.length)];
-}
-
 function broadcast(lobby, data) {
   lobby.players.forEach(p => {
     if (p.ws?.readyState === 1) {
@@ -38,21 +38,8 @@ function broadcast(lobby, data) {
   });
 }
 
-function publicLobbyData(lobby) {
-  return {
-    id: lobby.id,
-    count: lobby.players.length,
-    phase: lobby.phase
-  };
-}
-
-function broadcastLobbyList() {
-  const list = Object.values(lobbies).map(publicLobbyData);
-  wss.clients.forEach(ws => {
-    if (ws.readyState === 1) {
-      ws.send(JSON.stringify({ type: 'lobbyList', lobbies: list }));
-    }
-  });
+function randomWord() {
+  return words[crypto.randomInt(words.length)];
 }
 
 function createLobby(host) {
@@ -63,30 +50,13 @@ function createLobby(host) {
     phase: PHASES.LOBBY,
     players: [],
     spectators: [],
-    word: null,
-    hint: null,
     turn: 0,
     round1: [],
     round2: [],
-    lastProgress: Date.now()
+    word: '',
+    hint: ''
   };
   return lobbies[id];
-}
-
-function assignRoles(lobby) {
-  const idx = crypto.randomInt(lobby.players.length);
-  const { word, hint } = randomWord();
-  lobby.word = word;
-  lobby.hint = hint;
-
-  lobby.players.forEach((p, i) => {
-    p.role = i === idx ? 'impostor' : 'civilian';
-    p.vote = null;
-    p.ws.send(JSON.stringify({
-      type: 'gameStart',
-      word: p.role === 'civilian' ? word : hint
-    }));
-  });
 }
 
 function startGame(lobby) {
@@ -94,43 +64,44 @@ function startGame(lobby) {
   lobby.turn = 0;
   lobby.round1 = [];
   lobby.round2 = [];
-  lobby.lastProgress = Date.now();
-  assignRoles(lobby);
 
-  broadcast(lobby, {
-    type: 'state',
-    lobby
+  const { word, hint } = randomWord();
+  lobby.word = word;
+  lobby.hint = hint;
+
+  const impostorIndex = crypto.randomInt(lobby.players.length);
+
+  lobby.players.forEach((p, i) => {
+    p.role = i === impostorIndex ? 'impostor' : 'civilian';
+    p.vote = null;
+    p.ws.send(JSON.stringify({
+      type: 'gameStart',
+      word: p.role === 'civilian' ? word : hint
+    }));
   });
+
+  broadcast(lobby, statePayload(lobby));
 }
 
-function advancePhase(lobby) {
-  lobby.lastProgress = Date.now();
-  if (lobby.phase === PHASES.ROUND1) lobby.phase = PHASES.ROUND2;
-  else if (lobby.phase === PHASES.ROUND2) lobby.phase = PHASES.VOTING;
-  else if (lobby.phase === PHASES.VOTING) lobby.phase = PHASES.RESULTS;
+function statePayload(lobby) {
+  return {
+    type: 'state',
+    phase: lobby.phase,
+    hostId: lobby.hostId,
+    players: lobby.players.map(p => ({
+      name: p.name,
+      connected: p.connected
+    })),
+    round1: lobby.round1,
+    round2: lobby.round2,
+    currentPlayer: lobby.players[lobby.turn]?.name
+  };
 }
 
 function migrateHost(lobby) {
   const next = lobby.players.find(p => p.connected);
   if (next) lobby.hostId = next.id;
 }
-
-setInterval(() => {
-  const now = Date.now();
-  Object.values(lobbies).forEach(lobby => {
-    lobby.players = lobby.players.filter(p => {
-      if (!p.connected && now - p.disconnectedAt > RECONNECT_TIMEOUT) {
-        return false;
-      }
-      return true;
-    });
-
-    if (!lobby.players.find(p => p.id === lobby.hostId)) {
-      migrateHost(lobby);
-    }
-  });
-  broadcastLobbyList();
-}, 5000);
 
 wss.on('connection', ws => {
   let player, lobby;
@@ -139,7 +110,6 @@ wss.on('connection', ws => {
     const msg = JSON.parse(raw);
 
     if (msg.type === 'join') {
-      const id = msg.lobbyId || null;
       player = {
         id: msg.playerId,
         name: msg.name,
@@ -147,35 +117,37 @@ wss.on('connection', ws => {
         connected: true
       };
 
-      if (id && lobbies[id]) lobby = lobbies[id];
-      else lobby = createLobby(player);
+      lobby = msg.lobbyId && lobbies[msg.lobbyId]
+        ? lobbies[msg.lobbyId]
+        : createLobby(player);
 
       const existing = lobby.players.find(p => p.id === player.id);
       if (existing) {
         existing.ws = ws;
         existing.connected = true;
-        ws.send(JSON.stringify({ type: 'state', lobby }));
+        ws.send(JSON.stringify(statePayload(lobby)));
         return;
       }
 
       if (lobby.phase !== PHASES.LOBBY) {
         lobby.spectators.push(player);
         ws.send(JSON.stringify({ type: 'spectator' }));
-      } else {
-        lobby.players.push(player);
+        return;
       }
 
+      lobby.players.push(player);
+
       ws.send(JSON.stringify({ type: 'joined', lobbyId: lobby.id }));
-      broadcast(lobby, { type: 'players', players: lobby.players });
-      broadcastLobbyList();
+      broadcast(lobby, statePayload(lobby));
     }
 
     if (!player || !lobby) return;
 
     if (msg.type === 'exit') {
       lobby.players = lobby.players.filter(p => p.id !== player.id);
+      if (player.id === lobby.hostId) migrateHost(lobby);
       ws.send(JSON.stringify({ type: 'exited' }));
-      broadcast(lobby, { type: 'players', players: lobby.players });
+      broadcast(lobby, statePayload(lobby));
     }
 
     if (msg.type === 'start' && player.id === lobby.hostId) {
@@ -191,16 +163,19 @@ wss.on('connection', ws => {
       lobby.turn++;
       if (lobby.turn >= lobby.players.length) {
         lobby.turn = 0;
-        advancePhase(lobby);
+        lobby.phase =
+          lobby.phase === PHASES.ROUND1
+            ? PHASES.ROUND2
+            : PHASES.VOTING;
       }
 
-      broadcast(lobby, { type: 'state', lobby });
+      broadcast(lobby, statePayload(lobby));
     }
 
     if (msg.type === 'vote') {
       player.vote = msg.vote;
       if (lobby.players.every(p => p.vote)) {
-        advancePhase(lobby);
+        lobby.phase = PHASES.RESULTS;
         broadcast(lobby, {
           type: 'results',
           word: lobby.word,
@@ -220,8 +195,8 @@ wss.on('connection', ws => {
   ws.on('close', () => {
     if (player) {
       player.connected = false;
-      player.disconnectedAt = Date.now();
-      broadcast(lobby, { type: 'players', players: lobby.players });
+      if (player.id === lobby.hostId) migrateHost(lobby);
+      broadcast(lobby, statePayload(lobby));
     }
   });
 });
