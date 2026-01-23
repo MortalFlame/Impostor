@@ -120,44 +120,59 @@ wss.on('connection', ws => {
     }
 
     // --- SUBMIT WORD ---
-    // --- SUBMIT WORD ---
-    if (msg.type === 'submitWord') {
-      if (lobby.players[lobby.turn].id !== player.id) return;
+if (msg.type === 'submitWord') {
+  if (lobby.players[lobby.turn].id !== player.id) return;
 
-      const entry = { name: player.name, word: msg.word };
-      lobby.phase === 'round1' ? lobby.round1.push(entry) : lobby.round2.push(entry);
+  const entry = { name: player.name, word: msg.word };
+  lobby.phase === 'round1' ? lobby.round1.push(entry) : lobby.round2.push(entry);
 
-      lobby.turn++; // Move to the next player
+  lobby.turn++;
 
-      // Check if the round is over
-      if (lobby.turn >= lobby.players.length) {
-        // This round has finished
-        lobby.turn = 0; // Reset turn for the next phase
-
-        if (lobby.phase === 'round1') {
-          lobby.phase = 'round2';
-        } else if (lobby.phase === 'round2') {
-          lobby.phase = 'voting';
-        }
-      }
-
-      // Send updates to all players
-      if (lobby.phase === 'voting') {
+  if (lobby.turn >= lobby.players.length) {
+    lobby.turn = 0;
+    
+    if (lobby.phase === 'round1') {
+      lobby.phase = 'round2';
+      // Send final Round 1 state with all words
+      broadcast(lobby, {
+        type: 'turnUpdate',
+        phase: 'round1', // Still round1 phase for this update
+        round1: lobby.round1,
+        round2: lobby.round2,
+        currentPlayer: lobby.players[0].name
+      });
+    } 
+    else if (lobby.phase === 'round2') {
+      lobby.phase = 'voting';
+      // CRITICAL: Send final Round 2 state BEFORE voting
+      broadcast(lobby, {
+        type: 'turnUpdate',
+        phase: 'round2', // Still round2 phase for this update
+        round1: lobby.round1,
+        round2: lobby.round2, // This now includes Player 3's word
+        currentPlayer: 'Voting Phase'
+      });
+      
+      // Then start voting
+      setTimeout(() => {
         broadcast(lobby, {
           type: 'startVoting',
           players: lobby.players.map(p => p.name)
         });
-      } else {
-        // Send turn update for round 1 or round 2
-        broadcast(lobby, {
-          type: 'turnUpdate',
-          phase: lobby.phase,
-          round1: lobby.round1,
-          round2: lobby.round2,
-          currentPlayer: lobby.players[lobby.turn].name
-        });
-      }
+      }, 500); // Small delay so players see the final words
     }
+    return;
+  }
+
+  // Normal turn update (not end of round)
+  broadcast(lobby, {
+    type: 'turnUpdate',
+    phase: lobby.phase,
+    round1: lobby.round1,
+    round2: lobby.round2,
+    currentPlayer: lobby.players[lobby.turn].name
+  });
+}
 
     // --- VOTE ---
         // ... (previous code remains unchanged)
