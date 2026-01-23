@@ -7,7 +7,11 @@ const join = document.getElementById('join');
 const exitBtn = document.getElementById('exit');
 const start = document.getElementById('start');
 const players = document.getElementById('players');
-const status = document.getElementById('status');
+
+const lobbyCard = document.querySelector('.lobby-card');
+const gameCard = document.querySelector('.game-card');
+const roleReveal = document.getElementById('roleReveal');
+const wordEl = document.getElementById('word');
 
 let playerId = localStorage.getItem('pid') || crypto.randomUUID();
 localStorage.setItem('pid', playerId);
@@ -34,6 +38,13 @@ function connect() {
       players.innerHTML = d.players.map(p =>
         `${p.name} <span class="dot ${p.connected ? 'green':'red'}"></span>`
       ).join('<br>');
+    }
+
+    if (d.type === 'gameStart') {
+      lobbyCard.classList.add('hidden');
+      gameCard.classList.remove('hidden');
+      roleReveal.classList.remove('hidden');
+      wordEl.textContent = d.word;
     }
 
     if (d.type === 'exited') location.reload();
