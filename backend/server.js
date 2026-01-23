@@ -1,9 +1,10 @@
-// Your other existing code above
+// Ensuring the broadcast function is defined before usage
 
-// Updated line 92
-broadcast(lobby, { 
-  type: 'lobbyUpdate', 
-  players: lobby.players.map(p => p.name),
-  owner: lobby.owner // Include owner in the message
-});
-// Your other existing code below
+function broadcast(message) {
+    // Function implementation
+}
+
+// Other code that uses the broadcast function
+
+// Example usage of broadcast
+broadcast('Hello World!');
