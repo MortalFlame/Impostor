@@ -70,19 +70,42 @@ function startGame(lobby) {
 wss.on('connection', ws => {
   let lobbyId, player;
 ws.on('close', () => {
-  if (player) {
-    player.connected = false;
+  if (!player) return;
+  player.connected = false;
 
-    const lobby = lobbies[lobbyId];
-    if (lobby) {
-      broadcast(lobby, {
-        type: 'playerStatus',
-        players: lobby.players.map(p => ({
-          name: p.name,
-          connected: p.connected
-        }))
-      });
-    }
+  const lobby = lobbies[lobbyId];
+  if (!lobby) return;
+
+  // broadcast player status
+  broadcast(lobby, {
+    type: 'playerStatus',
+    players: lobby.players.map(p => ({
+      name: p.name,
+      connected: p.connected
+    }))
+  });
+
+  // auto-advance turn if current player disconnected
+  if (lobby.players[lobby.turn]?.id === player.id) {
+    do {
+      lobby.turn++;
+      if (lobby.turn >= lobby.players.length) lobby.turn = 0;
+      if (lobby.players.every(p => !p.connected)) break;
+    } while (!lobby.players[lobby.turn].connected);
+
+    broadcast(lobby, {
+      type: 'turnUpdate',
+      phase: lobby.phase,
+      round1: lobby.round1,
+      round2: lobby.round2,
+      currentPlayer: lobby.players[lobby.turn]?.name
+    });
+  }
+
+  // host migration if host disconnected
+  if (player.id === lobby.hostId) {
+    const nextHost = lobby.players.find(p => p.connected);
+    if (nextHost) lobby.hostId = nextHost.id;
   }
 });
   ws.on('message', raw => {
@@ -93,21 +116,27 @@ ws.on('close', () => {
       if (!lobbies[lobbyId]) lobbies[lobbyId] = { players: [], phase: 'lobby' };
       const lobby = lobbies[lobbyId];
 
-      player = lobby.players.find(p => p.id === msg.playerId);
-      if (!player) {
+player = lobby.players.find(p => p.id === msg.playerId);
+if (!player) {
+  // new player
   player = {
     id: msg.playerId,
     name: msg.name,
     ws,
     connected: true
   };
+  // mid-game joiners become spectators
+  if (lobby.phase !== 'lobby') player.spectator = true;
+
   lobby.players.push(player);
 } else {
   // reconnect
   player.ws = ws;
   player.connected = true;
+  delete player.spectator; // reconnecting player is no longer spectator
 }
-// BROADCAST CONNECTION STATUS TO ALL PLAYERS
+
+// BROADCAST CONNECTION STATUS
 broadcast(lobby, {
   type: 'playerStatus',
   players: lobby.players.map(p => ({
@@ -115,52 +144,72 @@ broadcast(lobby, {
     connected: p.connected
   }))
 });
-      ws.send(JSON.stringify({ type: 'lobbyAssigned', lobbyId }));
-      broadcast(lobby, { type: 'lobbyUpdate', players: lobby.players.map(p => p.name) });
+
+// BROADCAST LOBBY UPDATE (with host info)
+broadcast(lobby, { 
+  type: 'lobbyUpdate', 
+  players: lobby.players.map(p => p.name),
+  isHost: player.id === lobby.hostId
+});
+
+ws.send(JSON.stringify({ type: 'lobbyAssigned', lobbyId }));
+
+// If player joined as spectator
+if (player.spectator) {
+  ws.send(JSON.stringify({
+    type: 'spectator',
+    phase: lobby.phase,
+    round1: lobby.round1,
+    round2: lobby.round2
+  }));
+}
       return;
     }
 
     if (!player) return;
     const lobby = lobbies[lobbyId];
 
-    if (msg.type === 'startGame' && lobby.phase === 'lobby') {
-      startGame(lobby);
-    }
+    if (msg.type === 'startGame') {
+  if (player.id !== lobby.hostId) return; // only host can start
+  if (lobby.phase !== 'lobby') return; // can't restart mid-game
+  startGame(lobby);
+}
 
-    if (msg.type === 'submitWord') {
-      if (lobby.players[lobby.turn].id !== player.id) return;
+if (msg.type === 'submitWord') {
+  if (lobby.players[lobby.turn].id !== player.id) return;
 
-      const entry = { name: player.name, word: msg.word };
-      lobby.phase === 'round1' ? lobby.round1.push(entry) : lobby.round2.push(entry);
+  const entry = { name: player.name, word: msg.word };
+  lobby.phase === 'round1' ? lobby.round1.push(entry) : lobby.round2.push(entry);
 
-      do {
-  lobby.turn++;
-  if (lobby.turn >= lobby.players.length) lobby.turn = 0;
-  
-  // If we've looped over all players and no one is connected, break
-  if (lobby.players.every(p => !p.connected)) break;
+  // NEW turn advance: skip disconnected players
+  do {
+    lobby.turn++;
+    if (lobby.turn >= lobby.players.length) lobby.turn = 0;
 
-} while (!lobby.players[lobby.turn].connected);
-        if (lobby.phase === 'round1') lobby.phase = 'round2';
-        else lobby.phase = 'voting';
-      }
+    // If all players disconnected, break
+    if (lobby.players.every(p => !p.connected)) break;
 
-      if (lobby.phase === 'voting') {
-        broadcast(lobby, {
-          type: 'startVoting',
-          players: lobby.players.map(p => p.name)
-        });
-        return;
-      }
+  } while (!lobby.players[lobby.turn].connected);
 
-      broadcast(lobby, {
-        type: 'turnUpdate',
-        phase: lobby.phase,
-        round1: lobby.round1,
-        round2: lobby.round2,
-        currentPlayer: lobby.players[lobby.turn].name
-      });
-    }
+  if (lobby.phase === 'round1') lobby.phase = 'round2';
+  else lobby.phase = 'voting';
+
+  if (lobby.phase === 'voting') {
+    broadcast(lobby, {
+      type: 'startVoting',
+      players: lobby.players.map(p => p.name)
+    });
+    return;
+  }
+
+  broadcast(lobby, {
+    type: 'turnUpdate',
+    phase: lobby.phase,
+    round1: lobby.round1,
+    round2: lobby.round2,
+    currentPlayer: lobby.players[lobby.turn].name
+  });
+}
 
     if (msg.type === 'vote') {
       if (msg.vote === player.name) return;
