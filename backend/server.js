@@ -112,9 +112,10 @@ ws.on('close', () => {
     const msg = JSON.parse(raw);
 
     if (msg.type === 'joinLobby') {
-  lobbyId = msg.lobbyId || Math.floor(1000 + Math.random() * 9000).toString();
-  if (!lobbies[lobbyId]) lobbies[lobbyId] = { players: [], phase: 'lobby', hostId: null };
-  const lobby = lobbies[lobbyId];
+  // assign lobby ID (generate if empty)
+lobbyId = msg.lobbyId && msg.lobbyId.trim() ? msg.lobbyId : Math.floor(1000 + Math.random() * 9000).toString();
+if (!lobbies[lobbyId]) lobbies[lobbyId] = { players: [], phase: 'lobby', hostId: null };
+const lobby = lobbies[lobbyId];
 
   player = lobby.players.find(p => p.id === msg.playerId);
   if (!player) {
