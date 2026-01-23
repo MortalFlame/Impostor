@@ -55,7 +55,13 @@ button {
   background: linear-gradient(135deg, #6a8bff, #8a6aff);
   color: #fff;
   cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.1s, box-shadow 0.1s, filter 0.1s; /* Faster transition */
+}
+
+/* Make clicks feel responsive */
+button:active {
+  transform: scale(0.96);
+  filter: brightness(0.85);
 }
 
 button:hover:not(:disabled) {
