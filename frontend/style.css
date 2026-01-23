@@ -175,3 +175,31 @@ button:disabled { opacity: 0.4; }
   0% { transform: rotateY(0deg); }
   100% { transform: rotateY(180deg); }
 }
+
+/* OPTIONAL ENHANCEMENTS */
+
+/* Exit Lobby button spacing */
+#exitLobby {
+  margin-top: 8px;
+  background: linear-gradient(135deg, #ff7b7b, #ff5b9b);
+}
+
+/* Connection status badge */
+#connectionStatus {
+  margin-top: 6px;
+  font-size: 11px;
+  opacity: 0.8;
+  text-align: left;
+}
+
+#connectionStatus div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+#connectionStatus span {
+  font-size: 12px; /* small dot */
+  line-height: 0;
+}
