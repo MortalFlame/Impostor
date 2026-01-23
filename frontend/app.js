@@ -57,9 +57,13 @@ function connect() {
 
     // ----------------- LOBBY ASSIGNED -----------------
     if (d.type === 'lobbyAssigned') {
-      lobbyId.value = d.lobbyId;
-      exitLobby.classList.remove('hidden'); // show exit button
-    }
+  lobbyId.value = d.lobbyId;
+
+  lobbyCard.classList.remove('hidden');
+  gameCard.classList.add('hidden');
+
+  exitLobby.classList.remove('hidden');
+}
 
     // ----------------- PLAYER STATUS -----------------
     if (d.type === 'playerStatus') {
@@ -135,7 +139,9 @@ function connect() {
     }
   };
 
-  ws.onclose = () => setTimeout(connect, 2000);
+  ws.onclose = () => {
+  exitLobby.classList.add('hidden');
+};
 }
 
 // ----------------- BUTTON EVENTS -----------------
@@ -152,9 +158,19 @@ submit.onclick = () => {
 restart.onclick = () => ws.send(JSON.stringify({ type: 'restart' }));
 
 exitLobby.onclick = () => {
-  ws.close();
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.close();
+  }
+
+  // Reset UI
   lobbyCard.classList.remove('hidden');
   gameCard.classList.add('hidden');
+
+  players.innerHTML = '';
+  lobbyId.value = '';
+  start.disabled = true;
+
+  exitLobby.classList.add('hidden');
 };
 
 // ----------------- VOTE FUNCTION -----------------
