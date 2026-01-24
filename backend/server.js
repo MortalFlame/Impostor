@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 10000;
 const server = app.listen(PORT, () => console.log('Server running'));
 const wss = new WebSocketServer({ 
   server,
-  perMessageDeflate: false // Better for mobile
+  perMessageDeflate: false
 });
 
 const words = JSON.parse(fs.readFileSync(__dirname + '/words.json', 'utf8'));
@@ -36,7 +36,7 @@ function broadcast(lobby, data) {
       try {
         p.ws.send(dataStr);
       } catch (err) {
-        console.log(`Failed to send to player ${p.name}:`, err.message);
+        console.log(`Failed to send to player ${p.name}`);
       }
     }
   });
@@ -46,7 +46,7 @@ function broadcast(lobby, data) {
       try {
         s.ws.send(dataStr);
       } catch (err) {
-        console.log(`Failed to send to spectator ${s.name}:`, err.message);
+        console.log(`Failed to send to spectator ${s.name}`);
       }
     }
   });
@@ -61,7 +61,6 @@ function startGame(lobby) {
   lobby.round2 = [];
   lobby.restartReady = [];
 
-  // Clear spectator votes
   lobby.spectators.forEach(s => s.vote = '');
 
   const impostorIndex = crypto.randomInt(lobby.players.length);
@@ -70,7 +69,6 @@ function startGame(lobby) {
   lobby.word = word;
   lobby.hint = hint;
 
-  // Send game start to players
   lobby.players.forEach((p, i) => {
     p.role = i === impostorIndex ? 'impostor' : 'civilian';
     p.vote = '';
@@ -86,7 +84,6 @@ function startGame(lobby) {
     }
   });
 
-  // Send game start to spectators
   lobby.spectators.forEach(s => {
     if (s.ws?.readyState === 1) {
       try {
@@ -101,7 +98,6 @@ function startGame(lobby) {
     }
   });
 
-  // Send initial turn update to all
   broadcast(lobby, {
     type: 'turnUpdate',
     phase: lobby.phase,
@@ -115,7 +111,6 @@ function cleanupLobby(lobby, lobbyId) {
   const now = Date.now();
   let hasChanges = false;
   
-  // Remove disconnected players after 60 seconds (increased from 30)
   lobby.players = lobby.players.filter(p => {
     if (p.ws?.readyState === 1) return true;
     if (p.lastDisconnectTime && now - p.lastDisconnectTime > 60000) {
@@ -126,7 +121,6 @@ function cleanupLobby(lobby, lobbyId) {
     return true;
   });
   
-  // Remove disconnected spectators after 60 seconds
   lobby.spectators = lobby.spectators.filter(s => {
     if (s.ws?.readyState === 1) return true;
     if (s.lastDisconnectTime && now - s.lastDisconnectTime > 60000) {
@@ -137,14 +131,12 @@ function cleanupLobby(lobby, lobbyId) {
     return true;
   });
   
-  // If lobby is completely empty, delete it
   if (lobby.players.length === 0 && lobby.spectators.length === 0) {
     console.log(`Deleting empty lobby: ${lobbyId}`);
     delete lobbies[lobbyId];
     return;
   }
   
-  // Update owner if owner disconnected
   if (lobby.players.length > 0 && lobby.owner) {
     const ownerStillConnected = lobby.players.some(p => 
       p.id === lobby.owner && p.ws?.readyState === 1
@@ -161,22 +153,28 @@ function cleanupLobby(lobby, lobbyId) {
   if (hasChanges) {
     broadcast(lobby, { 
       type: 'lobbyUpdate', 
-      players: lobby.players.map(p => p.name),
-      spectators: lobby.spectators.map(s => s.name),
+      players: lobby.players.map(p => ({ 
+        id: p.id, 
+        name: p.name, 
+        connected: p.ws?.readyState === 1 
+      })),
+      spectators: lobby.spectators.map(s => ({ 
+        id: s.id, 
+        name: s.name, 
+        connected: s.ws?.readyState === 1 
+      })),
       owner: lobby.owner,
       phase: lobby.phase
     });
   }
 }
 
-// Periodic cleanup every 15 seconds (increased from 10)
 setInterval(() => {
   Object.keys(lobbies).forEach(lobbyId => {
     cleanupLobby(lobbies[lobbyId], lobbyId);
   });
 }, 15000);
 
-// Heartbeat/ping interval to keep connections alive
 setInterval(() => {
   wss.clients.forEach((ws) => {
     if (ws.isAlive === false) {
@@ -190,10 +188,9 @@ setInterval(() => {
       // Connection already closed
     }
   });
-}, 30000); // Ping every 30 seconds
+}, 30000);
 
 wss.on('connection', (ws, req) => {
-  // Get client IP for logging (optional)
   const clientIP = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
   console.log(`New connection from: ${clientIP}`);
   
@@ -204,9 +201,8 @@ wss.on('connection', (ws, req) => {
 
   let lobbyId = null;
   let player = null;
-  let connectionId = crypto.randomUUID(); // Track this specific connection
+  let connectionId = crypto.randomUUID();
 
-  // Set a timeout for connection - if no messages in 30 seconds, close
   const connectionTimeout = setTimeout(() => {
     if (ws.readyState === ws.OPEN) {
       console.log(`Closing idle connection: ${connectionId}`);
@@ -215,27 +211,23 @@ wss.on('connection', (ws, req) => {
   }, 30000);
 
   ws.on('message', (raw) => {
-    clearTimeout(connectionTimeout); // Reset timeout on activity
+    clearTimeout(connectionTimeout);
     
     try {
       const msg = JSON.parse(raw.toString());
       
-      // Reset connection alive flag
       ws.isAlive = true;
 
-      // Handle ping from client (optional)
       if (msg.type === 'ping') {
         ws.send(JSON.stringify({ type: 'pong' }));
         return;
       }
 
-      // --- DISCONNECTING MESSAGE ---
       if (msg.type === 'disconnecting') {
         console.log(`Client ${connectionId} disconnecting gracefully`);
         return;
       }
 
-      // --- JOIN LOBBY AS PLAYER ---
       if (msg.type === 'joinLobby') {
         lobbyId = msg.lobbyId || Math.floor(1000 + Math.random() * 9000).toString();
         
@@ -252,20 +244,16 @@ wss.on('connection', (ws, req) => {
         
         const lobby = lobbies[lobbyId];
 
-        // If game is in progress, join as spectator automatically
         if (lobby.phase !== 'lobby' && lobby.phase !== 'results') {
-          console.log(`Player ${msg.playerId} joining game in progress as spectator`);
+          console.log(`Player ${msg.playerId} joining game in progress`);
           
-          // Check if they were already a player in this game
           const existingPlayer = lobby.players.find(p => p.id === msg.playerId);
           if (existingPlayer) {
-            // Reconnecting player - let them resume their role
             player = existingPlayer;
             player.ws = ws;
             player.lastDisconnectTime = null;
             player.connectionId = connectionId;
             
-            // Send current game state
             setTimeout(() => {
               try {
                 ws.send(JSON.stringify({
@@ -293,16 +281,13 @@ wss.on('connection', (ws, req) => {
               }
             }, 100);
           } else {
-            // New spectator
             return handleSpectatorJoin(ws, msg, lobbyId, connectionId);
           }
         } else {
-          // Game not in progress - join as normal player
           return handlePlayerJoin(ws, msg, lobbyId, connectionId);
         }
       }
 
-      // --- JOIN AS SPECTATOR ---
       if (msg.type === 'joinSpectator') {
         if (!msg.lobbyId) {
           ws.send(JSON.stringify({ 
@@ -320,11 +305,9 @@ wss.on('connection', (ws, req) => {
       const lobby = lobbies[lobbyId];
       if (!lobby) return;
 
-      // Check if this is a spectator
       const isSpectator = lobby.spectators.some(s => s.id === player.id);
       
       if (isSpectator) {
-        // Spectators can only restart (convert to player for next game)
         if (msg.type === 'restart' && (lobby.phase === 'lobby' || lobby.phase === 'results')) {
           const spectatorIndex = lobby.spectators.findIndex(s => s.id === player.id);
           if (spectatorIndex !== -1) {
@@ -335,8 +318,16 @@ wss.on('connection', (ws, req) => {
             
             broadcast(lobby, { 
               type: 'lobbyUpdate', 
-              players: lobby.players.map(p => p.name),
-              spectators: lobby.spectators.map(s => s.name),
+              players: lobby.players.map(p => ({ 
+                id: p.id, 
+                name: p.name, 
+                connected: p.ws?.readyState === 1 
+              })),
+              spectators: lobby.spectators.map(s => ({ 
+                id: s.id, 
+                name: s.name, 
+                connected: s.ws?.readyState === 1 
+              })),
               owner: lobby.owner,
               phase: lobby.phase
             });
@@ -345,18 +336,13 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
-      // --- GAME ACTIONS (Players only) ---
-
-      // Update last action time
       player.lastActionTime = Date.now();
 
-      // --- START GAME ---
       if (msg.type === 'startGame' && lobby.phase === 'lobby') {
         if (lobby.owner !== player.id) return;
         startGame(lobby);
       }
 
-      // --- SUBMIT WORD ---
       if (msg.type === 'submitWord') {
         if (!lobby.players[lobby.turn] || lobby.players[lobby.turn].id !== player.id) {
           return;
@@ -402,7 +388,6 @@ wss.on('connection', (ws, req) => {
           return;
         }
 
-        // Skip to next connected player
         let attempts = 0;
         while (attempts < lobby.players.length) {
           if (lobby.players[lobby.turn]?.ws?.readyState === 1) break;
@@ -419,7 +404,6 @@ wss.on('connection', (ws, req) => {
         });
       }
 
-      // --- VOTE ---
       if (msg.type === 'vote') {
         if (msg.vote === player.name) return;
         player.vote = msg.vote;
@@ -462,7 +446,6 @@ wss.on('connection', (ws, req) => {
         }
       }
 
-      // --- RESTART ---
       if (msg.type === 'restart') {
         lobby.restartReady.push(player.id);
         
@@ -499,13 +482,11 @@ wss.on('connection', (ws, req) => {
       
       player.lastDisconnectTime = Date.now();
       
-      // If game is in progress and it's this player's turn, skip them after 20 seconds (increased from 10)
       if ((lobby.phase === 'round1' || lobby.phase === 'round2') && 
           lobby.players[lobby.turn]?.id === player.id) {
         
         setTimeout(() => {
           if (player.ws?.readyState !== 1 && lobby.phase !== 'voting' && lobby.phase !== 'results') {
-            // Skip to next connected player
             let attempts = 0;
             while (attempts < lobby.players.length) {
               lobby.turn = (lobby.turn + 1) % lobby.players.length;
@@ -521,14 +502,21 @@ wss.on('connection', (ws, req) => {
               currentPlayer: lobby.players[lobby.turn]?.name || 'Unknown'
             });
           }
-        }, 20000); // Increased to 20 seconds
+        }, 20000);
       }
       
-      // Update lobby state
       broadcast(lobby, { 
         type: 'lobbyUpdate', 
-        players: lobby.players.map(p => p.name),
-        spectators: lobby.spectators.map(s => s.name),
+        players: lobby.players.map(p => ({ 
+          id: p.id, 
+          name: p.name, 
+          connected: p.ws?.readyState === 1 
+        })),
+        spectators: lobby.spectators.map(s => ({ 
+          id: s.id, 
+          name: s.name, 
+          connected: s.ws?.readyState === 1 
+        })),
         owner: lobby.owner,
         phase: lobby.phase
       });
@@ -541,7 +529,6 @@ wss.on('connection', (ws, req) => {
     console.error(`WebSocket error for ${connectionId}:`, error.message);
   });
 
-  // Helper functions
   function handlePlayerJoin(ws, msg, targetLobbyId, connectionId) {
     const lobby = lobbies[targetLobbyId];
     lobbyId = targetLobbyId;
@@ -576,8 +563,16 @@ wss.on('connection', (ws, req) => {
     
     broadcast(lobby, { 
       type: 'lobbyUpdate', 
-      players: lobby.players.map(p => p.name),
-      spectators: lobby.spectators.map(s => s.name),
+      players: lobby.players.map(p => ({ 
+        id: p.id, 
+        name: p.name, 
+        connected: p.ws?.readyState === 1 
+      })),
+      spectators: lobby.spectators.map(s => ({ 
+        id: s.id, 
+        name: s.name, 
+        connected: s.ws?.readyState === 1 
+      })),
       owner: lobby.owner,
       phase: lobby.phase
     });
@@ -595,16 +590,13 @@ wss.on('connection', (ws, req) => {
     const lobby = lobbies[targetLobbyId];
     lobbyId = targetLobbyId;
     
-    // Check if already a player
     const existingPlayer = lobby.players.find(p => p.id === msg.playerId);
     if (existingPlayer) {
-      // Player reconnecting - let them resume
       player = existingPlayer;
       player.ws = ws;
       player.lastDisconnectTime = null;
       player.connectionId = connectionId;
     } else {
-      // Check if already a spectator
       let existingSpectator = lobby.spectators.find(s => s.id === msg.playerId);
       if (existingSpectator) {
         player = existingSpectator;
@@ -632,13 +624,20 @@ wss.on('connection', (ws, req) => {
     
     broadcast(lobby, { 
       type: 'lobbyUpdate', 
-      players: lobby.players.map(p => p.name),
-      spectators: lobby.spectators.map(s => s.name),
+      players: lobby.players.map(p => ({ 
+        id: p.id, 
+        name: p.name, 
+        connected: p.ws?.readyState === 1 
+      })),
+      spectators: lobby.spectators.map(s => ({ 
+        id: s.id, 
+        name: s.name, 
+        connected: s.ws?.readyState === 1 
+      })),
       owner: lobby.owner,
       phase: lobby.phase
     });
 
-    // Send current game state if in progress
     if (lobby.phase !== 'lobby' && lobby.phase !== 'results') {
       setTimeout(() => {
         try {
