@@ -39,9 +39,10 @@ let isReconnecting = false;
 let currentLobbyId = null;
 let joinType = 'joinLobby';
 let connectionAttempts = 0;
-let maxConnectionAttempts = 5;
+let maxConnectionAttempts = 10; // Increased for spectators
 let reconnectDelay = 2000;
 let hasShownConnectionWarning = false;
+let hasClickedRestart = false; // Track if player clicked restart
 
 let lastPingTime = 0;
 let connectionLatency = 0;
@@ -125,42 +126,49 @@ function showConnectionWarning(message) {
   }, 5000);
 }
 
+// Compact player list with grid layout
 function updatePlayerList(playersData, spectatorsData = []) {
-  let playersHtml = '<b>Players:</b><br>';
+  let playersHtml = '';
   
   if (Array.isArray(playersData) && playersData.length > 0) {
+    playersHtml += '<b>Players (' + playersData.length + '):</b>';
+    playersHtml += '<div class="player-grid">';
+    
     playersData.forEach(player => {
       const isConnected = player.connected !== false;
       const statusClass = isConnected ? 'player-connected' : 'player-disconnected';
-      const statusText = isConnected ? '●' : '○';
+      const statusSymbol = isConnected ? '●' : '○';
       
       playersHtml += `
         <div class="player-item">
           <span class="player-status-dot ${statusClass}"></span>
-          <span class="player-name">${player.name}</span>
-          <span style="font-size:12px; opacity:0.7">${statusText}</span>
+          <span class="player-name" title="${player.name}">${player.name}</span>
         </div>
       `;
     });
+    
+    playersHtml += '</div>';
   } else {
-    playersHtml += 'No players yet';
+    playersHtml += '<b>Players (0):</b><br>No players yet';
   }
   
   if (spectatorsData && spectatorsData.length > 0) {
-    playersHtml += '<br><br><b>Spectators:</b><br>';
+    playersHtml += '<br><b>Spectators (' + spectatorsData.length + '):</b>';
+    playersHtml += '<div class="player-grid">';
+    
     spectatorsData.forEach(spectator => {
       const isConnected = spectator.connected !== false;
       const statusClass = isConnected ? 'player-connected' : 'player-disconnected';
-      const statusText = isConnected ? '●' : '○';
       
       playersHtml += `
-        <div class="spectator-item">
+        <div class="player-item spectator-item">
           <span class="player-status-dot ${statusClass}"></span>
-          <span>${spectator.name}</span>
-          <span style="font-size:12px; opacity:0.7">${statusText}</span>
+          <span class="player-name" title="${spectator.name}">${spectator.name}</span>
         </div>
       `;
     });
+    
+    playersHtml += '</div>';
   }
   
   players.innerHTML = playersHtml;
@@ -293,13 +301,14 @@ function connect() {
           start.disabled = isSpectator || d.players.length < 3 || !isOwner;
           
           spectate.style.display = isSpectator ? 'none' : 'block';
+          join.style.display = isSpectator ? 'none' : 'block';
           
           if (d.phase && d.phase !== 'lobby') {
-            players.innerHTML += `<br><br><i>Game in progress: ${d.phase}</i>`;
+            players.innerHTML += `<br><i style="color:#f39c12">Game in progress: ${d.phase}</i>`;
           }
           
           if (isSpectator && (d.phase === 'lobby' || d.phase === 'results')) {
-            players.innerHTML += `<br><br><i style="color:#9b59b6">Click "Join Lobby" to play next game</i>`;
+            players.innerHTML += `<br><i style="color:#9b59b6">Click "Join Lobby" to play next game</i>`;
           }
         }
 
@@ -307,10 +316,14 @@ function connect() {
           lobbyCard.classList.add('hidden');
           gameCard.classList.remove('hidden');
           
+          // Reset restart state
+          hasClickedRestart = false;
+          
           results.innerHTML = ''; 
           restart.classList.add('hidden');
           restart.style.opacity = '1';
           restart.innerText = 'Restart Game';
+          restart.disabled = false;
           
           input.value = '';
           
@@ -400,9 +413,13 @@ function connect() {
           
           if (!isSpectator) {
             restart.classList.remove('hidden');
+            restart.innerText = 'Restart Game';
+            restart.disabled = false;
+            restart.style.opacity = '1';
+            hasClickedRestart = false; // Reset for next game
           } else {
             results.innerHTML += `<hr><div style="text-align:center; color:#9b59b6">
-              <i>👁️ You are spectating. Click "Join Lobby" in the lobby to play next game.</i>
+              <i>👁️ You are spectating. Click "Join Lobby" to play next game.</i>
             </div>`;
           }
           
@@ -410,7 +427,17 @@ function connect() {
         }
 
         if (d.type === 'restartUpdate') {
-          restart.innerText = `Waiting for others... (${d.readyCount}/${d.totalPlayers})`;
+          // Only update if this player has already clicked restart
+          if (hasClickedRestart) {
+            restart.innerText = `Waiting for others... (${d.readyCount}/${d.totalPlayers})`;
+            restart.disabled = true;
+            restart.style.opacity = '0.7';
+          } else {
+            // Player hasn't clicked yet, keep showing "Restart Game"
+            restart.innerText = 'Restart Game';
+            restart.disabled = false;
+            restart.style.opacity = '1';
+          }
         }
       } catch (error) {
         safeError('Error processing message:', error);
@@ -434,6 +461,7 @@ function connect() {
         return;
       }
       
+      // If we're in a game and get disconnected, try to reconnect
       if (gameCard && !gameCard.classList.contains('hidden')) {
         showConnectionWarning('Connection lost. Reconnecting...');
         updateConnectionStatus('connecting', 'Reconnecting...');
@@ -489,9 +517,13 @@ restart.onclick = () => {
     showConnectionWarning('Connection lost. Please wait for reconnection...');
     return;
   }
+  
+  // Mark that this player has clicked restart
+  hasClickedRestart = true;
   ws.send(JSON.stringify({ type: 'restart' }));
-  restart.style.opacity = '0.5';
   restart.innerText = 'Waiting for others...';
+  restart.disabled = true;
+  restart.style.opacity = '0.7';
 };
 
 window.vote = (v, btnElement) => {
@@ -528,34 +560,72 @@ input.addEventListener('keypress', (e) => {
 });
 
 let hiddenTime = null;
+let pageHidden = false;
+
+// Enhanced page visibility handling for spectators
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
+    pageHidden = true;
     hiddenTime = Date.now();
     safeLog('Page hidden - connection may be suspended');
+    
+    // If we're a spectator, send a ping to keep connection alive
+    if (isSpectator && ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({ type: 'ping' }));
+      } catch (err) {
+        // Connection might be closing
+      }
+    }
+    
     if (ws && ws.readyState === WebSocket.OPEN) {
       updateConnectionStatus('connecting', 'Page inactive...');
     }
   } else {
+    pageHidden = false;
     const hiddenDuration = hiddenTime ? Date.now() - hiddenTime : 0;
     safeLog(`Page visible after ${hiddenDuration}ms`);
     
-    if (hiddenDuration > 5000) {
-      if (ws && ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING) {
+    // If page was hidden for a while, force reconnection for spectators
+    if (hiddenDuration > 3000) {
+      if (ws && (ws.readyState !== WebSocket.OPEN || isSpectator)) {
         safeLog('Reconnecting after page visibility change');
         updateConnectionStatus('connecting', 'Reconnecting...');
+        
+        // Close existing connection if it exists
+        if (ws && ws.readyState !== WebSocket.CLOSED) {
+          try {
+            ws.close(1000, 'Page became visible');
+          } catch (err) {
+            // Ignore errors
+          }
+        }
+        
+        // Reconnect with a short delay
         setTimeout(() => {
           if (isSpectator && currentLobbyId) {
             joinAsSpectator();
           } else if (currentLobbyId) {
             joinAsPlayer();
           }
-        }, 1000);
+        }, 500);
       }
     } else if (ws && ws.readyState === WebSocket.OPEN) {
       updateConnectionStatus('connected');
     }
   }
 });
+
+// Send periodic pings when page is hidden (for spectators)
+setInterval(() => {
+  if (pageHidden && isSpectator && ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      ws.send(JSON.stringify({ type: 'ping' }));
+    } catch (err) {
+      // Connection issue, will reconnect on visibility change
+    }
+  }
+}, 15000); // Every 15 seconds
 
 window.addEventListener('beforeunload', () => {
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -567,5 +637,6 @@ window.addEventListener('beforeunload', () => {
   }
 });
 
+// Show lobby by default
 updateConnectionStatus('disconnected');
 safeLog('Game client initialized');
