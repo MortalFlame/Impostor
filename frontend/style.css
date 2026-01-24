@@ -83,21 +83,37 @@ body {
   animation: blink 1.5s infinite;
 }
 
-.player-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
+/* Compact player list */
+.player-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 10px;
 }
 
-.player-name {
-  flex-grow: 1;
+.player-item {
+  background: rgba(13, 17, 28, 0.6);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spectator-item {
+  background: rgba(155, 89, 182, 0.1);
+  color: #9b59b6;
 }
 
 .player-status-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .player-connected {
@@ -109,12 +125,21 @@ body {
   opacity: 0.6;
 }
 
-.spectator-item {
-  color: #9b59b6;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
+.player-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-grow: 1;
+}
+
+/* Player list headers */
+.players b {
+  color: #6a8bff;
+  display: block;
+  margin-top: 12px;
+  font-size: 14px;
+  border-bottom: 1px solid rgba(106, 139, 255, 0.3);
+  padding-bottom: 4px;
 }
 
 .app {
@@ -199,14 +224,8 @@ button:disabled { opacity: 0.4; }
   text-align: center;
   opacity: 0.9;
   margin: 10px 0;
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.players b {
-  color: #6a8bff;
-  display: block;
-  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .role-reveal {
