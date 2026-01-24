@@ -53,6 +53,59 @@ function broadcast(lobby, data) {
   });
 }
 
+// NEW: Check if game should end due to player count or impostor leaving
+function checkGameEndConditions(lobby, lobbyId) {
+  // Only check if game is in progress
+  if (lobby.phase === 'lobby' || lobby.phase === 'results' || lobby.phase === 'voting') {
+    return false;
+  }
+  
+  const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
+  
+  // Check if we have less than 3 connected players
+  if (connectedPlayers.length < 3) {
+    console.log(`Game in lobby ${lobbyId} ending: less than 3 players connected (${connectedPlayers.length})`);
+    endGameEarly(lobby, 'not_enough_players');
+    return true;
+  }
+  
+  // Check if impostor left (if game has started and impostor role was assigned)
+  if (lobby.phase === 'round1' || lobby.phase === 'round2') {
+    const impostor = lobby.players.find(p => p.role === 'impostor');
+    if (impostor && impostor.ws?.readyState !== 1) {
+      console.log(`Game in lobby ${lobbyId} ending: impostor left`);
+      endGameEarly(lobby, 'impostor_left');
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+// NEW: End game early due to player count or impostor leaving
+function endGameEarly(lobby, reason) {
+  // Clear any turn timeout
+  if (lobby.turnTimeout) {
+    clearTimeout(lobby.turnTimeout);
+    lobby.turnTimeout = null;
+  }
+  
+  const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
+  const winner = (reason === 'impostor_left') ? 'Civilians' : 'Impostor';
+  
+  broadcast(lobby, {
+    type: 'gameEndEarly',
+    roles: lobby.players.map(p => ({ name: p.name, role: p.role })),
+    secretWord: lobby.word,
+    hint: lobby.hint,
+    winner,
+    reason
+  });
+  
+  lobby.phase = 'results';
+  lobby.restartReady = [];
+}
+
 function startGame(lobby) {
   // Only count connected players for starting game
   const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
@@ -66,6 +119,7 @@ function startGame(lobby) {
   lobby.round1 = [];
   lobby.round2 = [];
   lobby.restartReady = [];
+  lobby.turnTimeout = null;
 
   lobby.spectators.forEach(s => s.vote = '');
 
@@ -73,15 +127,11 @@ function startGame(lobby) {
   lobby.word = word;
   lobby.hint = hint;
 
-  // IMPORTANT FIX: Only assign roles to connected players
-  // Shuffle connected players to randomize impostor selection
   const shuffledConnectedPlayers = [...connectedPlayers].sort(() => Math.random() - 0.5);
   const impostorIndex = crypto.randomInt(shuffledConnectedPlayers.length);
   
-  // Clear all roles first
   lobby.players.forEach(p => p.role = null);
   
-  // Assign roles to connected players only
   shuffledConnectedPlayers.forEach((player, i) => {
     player.role = i === impostorIndex ? 'impostor' : 'civilian';
     player.vote = '';
@@ -97,7 +147,6 @@ function startGame(lobby) {
     }
   });
 
-  // Send to spectators
   lobby.spectators.forEach(s => {
     if (s.ws?.readyState === 1) {
       try {
@@ -112,14 +161,95 @@ function startGame(lobby) {
     }
   });
 
-  // Only use connected players for turn order
   const turnPlayer = shuffledConnectedPlayers[0];
+  
+  startTurnTimer(lobby);
+  
   broadcast(lobby, {
     type: 'turnUpdate',
     phase: lobby.phase,
     round1: [],
     round2: [],
-    currentPlayer: turnPlayer.name
+    currentPlayer: turnPlayer.name,
+    timeRemaining: 30
+  });
+}
+
+function startTurnTimer(lobby) {
+  if (lobby.turnTimeout) {
+    clearTimeout(lobby.turnTimeout);
+    lobby.turnTimeout = null;
+  }
+  
+  if (lobby.phase !== 'round1' && lobby.phase !== 'round2') return;
+  
+  const currentPlayer = lobby.players[lobby.turn];
+  if (!currentPlayer) return;
+  
+  lobby.turnTimeout = setTimeout(() => {
+    console.log(`Turn timeout for player ${currentPlayer.name}`);
+    
+    if (currentPlayer.ws?.readyState !== 1) {
+      skipCurrentPlayer(lobby);
+    } else {
+      console.log(`Player ${currentPlayer.name} is connected but timed out`);
+      skipCurrentPlayer(lobby);
+    }
+  }, 30000);
+}
+
+function skipCurrentPlayer(lobby) {
+  console.log(`Skipping player ${lobby.players[lobby.turn]?.name}`);
+  
+  lobby.turn = (lobby.turn + 1) % lobby.players.length;
+  
+  let attempts = 0;
+  while (attempts < lobby.players.length) {
+    if (lobby.players[lobby.turn]?.ws?.readyState === 1) break;
+    lobby.turn = (lobby.turn + 1) % lobby.players.length;
+    attempts++;
+  }
+  
+  const currentRound = lobby.phase === 'round1' ? lobby.round1 : lobby.round2;
+  if (currentRound.length >= lobby.players.filter(p => p.ws?.readyState === 1).length) {
+    lobby.turn = 0;
+    
+    if (lobby.phase === 'round1') {
+      lobby.phase = 'round2';
+    } else if (lobby.phase === 'round2') {
+      lobby.phase = 'voting';
+      if (lobby.turnTimeout) {
+        clearTimeout(lobby.turnTimeout);
+        lobby.turnTimeout = null;
+      }
+      
+      broadcast(lobby, {
+        type: 'turnUpdate',
+        phase: 'round2',
+        round1: lobby.round1,
+        round2: lobby.round2,
+        currentPlayer: 'Voting Phase'
+      });
+      
+      setTimeout(() => {
+        broadcast(lobby, {
+          type: 'startVoting',
+          players: lobby.players.map(p => p.name)
+        });
+      }, 500);
+      return;
+    }
+  }
+  
+  startTurnTimer(lobby);
+  
+  broadcast(lobby, {
+    type: 'turnUpdate',
+    phase: lobby.phase,
+    round1: lobby.round1,
+    round2: lobby.round2,
+    currentPlayer: lobby.players[lobby.turn]?.name || 'Unknown',
+    timeRemaining: 30
   });
 }
 
@@ -151,6 +281,11 @@ function cleanupLobby(lobby, lobbyId) {
     console.log(`Deleting empty lobby: ${lobbyId}`);
     delete lobbies[lobbyId];
     return;
+  }
+  
+  // NEW: Check game end conditions after removing players
+  if (hasChanges) {
+    checkGameEndConditions(lobby, lobbyId);
   }
   
   if (lobby.players.length > 0 && lobby.owner) {
@@ -224,7 +359,7 @@ wss.on('connection', (ws, req) => {
       console.log(`Closing idle connection: ${connectionId}`);
       ws.close(1000, 'Connection timeout');
     }
-  }, 45000); // Increased to 45 seconds for spectators
+  }, 45000);
 
   ws.on('message', (raw) => {
     clearTimeout(connectionTimeout);
@@ -253,7 +388,8 @@ wss.on('connection', (ws, req) => {
             spectators: [],
             phase: 'lobby', 
             owner: msg.playerId,
-            createdAt: Date.now()
+            createdAt: Date.now(),
+            turnTimeout: null
           }; 
           console.log(`Created new lobby: ${lobbyId}`);
         }
@@ -269,6 +405,7 @@ wss.on('connection', (ws, req) => {
             player.ws = ws;
             player.lastDisconnectTime = null;
             player.connectionId = connectionId;
+            player.reconnectionAttempts = (player.reconnectionAttempts || 0) + 1;
             
             setTimeout(() => {
               try {
@@ -286,6 +423,10 @@ wss.on('connection', (ws, req) => {
                     round2: lobby.round2,
                     currentPlayer: lobby.players[lobby.turn]?.name || 'Unknown'
                   }));
+                  
+                  if (lobby.players[lobby.turn]?.id === player.id) {
+                    startTurnTimer(lobby);
+                  }
                 } else if (lobby.phase === 'voting') {
                   ws.send(JSON.stringify({
                     type: 'startVoting',
@@ -316,19 +457,20 @@ wss.on('connection', (ws, req) => {
         return handleSpectatorJoin(ws, msg, msg.lobbyId, connectionId);
       }
 
-      // NEW: Handle exit lobby request
       if (msg.type === 'exitLobby') {
         if (lobbyId && lobbies[lobbyId] && player) {
           const lobby = lobbies[lobbyId];
           console.log(`Player ${player.name} exiting lobby ${lobbyId}`);
           
-          // Remove player from appropriate list
+          // NEW: Check if game should end when player exits
+          const wasGameInProgress = (lobby.phase !== 'lobby' && lobby.phase !== 'results');
+          const playerWasImpostor = player.role === 'impostor';
+          
           if (player.isSpectator) {
             lobby.spectators = lobby.spectators.filter(s => s.id !== player.id);
           } else {
             lobby.players = lobby.players.filter(p => p.id !== player.id);
             
-            // If owner leaves, assign new owner
             if (lobby.owner === player.id && lobby.players.length > 0) {
               const newOwner = lobby.players.find(p => p.ws?.readyState === 1);
               if (newOwner) {
@@ -338,17 +480,28 @@ wss.on('connection', (ws, req) => {
               }
             }
             
-            // If game is in lobby phase and this player had clicked restart, remove them
             if (lobby.phase === 'results' || lobby.phase === 'lobby') {
               lobby.restartReady = lobby.restartReady.filter(id => id !== player.id);
             }
           }
           
-          // Clean up empty lobby
           if (lobby.players.length === 0 && lobby.spectators.length === 0) {
             delete lobbies[lobbyId];
           } else {
-            // Broadcast updated lobby
+            // NEW: Check game end conditions after player exits
+            if (wasGameInProgress) {
+              // Check if impostor left or less than 3 players
+              if (playerWasImpostor) {
+                checkGameEndConditions(lobby, lobbyId);
+              } else {
+                // Check if we have less than 3 players now
+                const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
+                if (connectedPlayers.length < 3) {
+                  checkGameEndConditions(lobby, lobbyId);
+                }
+              }
+            }
+            
             broadcast(lobby, { 
               type: 'lobbyUpdate', 
               players: lobby.players.map(p => ({ 
@@ -366,13 +519,15 @@ wss.on('connection', (ws, req) => {
             });
           }
           
-          // Send confirmation to exiting player
-          ws.send(JSON.stringify({ 
-            type: 'lobbyExited', 
-            message: 'Successfully exited lobby' 
-          }));
+          try {
+            ws.send(JSON.stringify({ 
+              type: 'lobbyExited', 
+              message: 'Successfully exited lobby' 
+            }));
+          } catch (sendError) {
+            // Ignore
+          }
           
-          // Reset connection variables
           lobbyId = null;
           player = null;
         }
@@ -395,11 +550,14 @@ wss.on('connection', (ws, req) => {
             player.role = null;
             lobby.players.push(player);
             
-            // Notify the spectator they are now a player
-            ws.send(JSON.stringify({
-              type: 'roleChanged',
-              message: 'You are now a player for the next game!'
-            }));
+            try {
+              ws.send(JSON.stringify({
+                type: 'roleChanged',
+                message: 'You are now a player for the next game!'
+              }));
+            } catch (sendError) {
+              // Ignore
+            }
             
             broadcast(lobby, { 
               type: 'lobbyUpdate', 
@@ -430,13 +588,22 @@ wss.on('connection', (ws, req) => {
 
       if (msg.type === 'submitWord') {
         if (!lobby.players[lobby.turn] || lobby.players[lobby.turn].id !== player.id) {
+          console.log(`Not ${player.name}'s turn (it's ${lobby.players[lobby.turn]?.name}'s turn)`);
           return;
         }
 
-        if (player.ws?.readyState !== 1) return;
+        if (player.ws?.readyState !== 1) {
+          console.log(`Player ${player.name} not connected`);
+          return;
+        }
 
         const entry = { name: player.name, word: msg.word };
         lobby.phase === 'round1' ? lobby.round1.push(entry) : lobby.round2.push(entry);
+
+        if (lobby.turnTimeout) {
+          clearTimeout(lobby.turnTimeout);
+          lobby.turnTimeout = null;
+        }
 
         lobby.turn++;
 
@@ -480,12 +647,15 @@ wss.on('connection', (ws, req) => {
           attempts++;
         }
 
+        startTurnTimer(lobby);
+
         broadcast(lobby, {
           type: 'turnUpdate',
           phase: lobby.phase,
           round1: lobby.round1,
           round2: lobby.round2,
-          currentPlayer: lobby.players[lobby.turn].name
+          currentPlayer: lobby.players[lobby.turn].name,
+          timeRemaining: 30
         });
       }
 
@@ -528,18 +698,21 @@ wss.on('connection', (ws, req) => {
             winner
           });
           lobby.phase = 'results';
+          
+          if (lobby.turnTimeout) {
+            clearTimeout(lobby.turnTimeout);
+            lobby.turnTimeout = null;
+          }
         }
       }
 
       if (msg.type === 'restart') {
-        // Only add if not already in the array
         if (!lobby.restartReady.includes(player.id)) {
           lobby.restartReady.push(player.id);
         }
         
         const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
         
-        // Send individual restart update to each player
         lobby.players.forEach(p => {
           if (p.ws?.readyState === 1) {
             try {
@@ -580,28 +753,32 @@ wss.on('connection', (ws, req) => {
       
       player.lastDisconnectTime = Date.now();
       
-      // If game is in progress and it's this player's turn, skip them after 20 seconds
+      // NEW: Check game end conditions when player disconnects
+      const wasGameInProgress = (lobby.phase !== 'lobby' && lobby.phase !== 'results');
+      const playerWasImpostor = player.role === 'impostor';
+      
       if ((lobby.phase === 'round1' || lobby.phase === 'round2') && 
           lobby.players[lobby.turn]?.id === player.id) {
         
         setTimeout(() => {
           if (player.ws?.readyState !== 1 && lobby.phase !== 'voting' && lobby.phase !== 'results') {
-            let attempts = 0;
-            while (attempts < lobby.players.length) {
-              lobby.turn = (lobby.turn + 1) % lobby.players.length;
-              if (lobby.players[lobby.turn]?.ws?.readyState === 1) break;
-              attempts++;
-            }
-            
-            broadcast(lobby, {
-              type: 'turnUpdate',
-              phase: lobby.phase,
-              round1: lobby.round1,
-              round2: lobby.round2,
-              currentPlayer: lobby.players[lobby.turn]?.name || 'Unknown'
-            });
+            console.log(`Player ${player.name} disconnected during turn, skipping...`);
+            skipCurrentPlayer(lobby);
           }
-        }, 20000);
+        }, 30000);
+      }
+      
+      // Check if game should end after disconnect
+      if (wasGameInProgress) {
+        if (playerWasImpostor) {
+          checkGameEndConditions(lobby, lobbyId);
+        } else {
+          // Check if we have less than 3 connected players now
+          const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
+          if (connectedPlayers.length < 3) {
+            checkGameEndConditions(lobby, lobbyId);
+          }
+        }
       }
       
       broadcast(lobby, { 
@@ -638,6 +815,7 @@ wss.on('connection', (ws, req) => {
       player.ws = ws;
       player.lastDisconnectTime = null;
       player.connectionId = connectionId;
+      player.reconnectionAttempts = (player.reconnectionAttempts || 0) + 1;
     } else {
       player = { 
         id: msg.playerId, 
@@ -679,10 +857,14 @@ wss.on('connection', (ws, req) => {
 
   function handleSpectatorJoin(ws, msg, targetLobbyId, connectionId) {
     if (!lobbies[targetLobbyId]) {
-      ws.send(JSON.stringify({ 
-        type: 'error', 
-        message: 'Lobby not found' 
-      }));
+      try {
+        ws.send(JSON.stringify({ 
+          type: 'error', 
+          message: 'Lobby not found' 
+        }));
+      } catch (sendError) {
+        // Ignore
+      }
       return;
     }
     
