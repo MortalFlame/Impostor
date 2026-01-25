@@ -218,22 +218,37 @@ function skipCurrentPlayer(lobby) {
     return;
   }
   
-  const currentRound = lobby.phase === 'round1' ? lobby.round1 : lobby.round2;
   const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
   
-  if (currentRound.length >= connectedPlayers.length) {
-    lobby.turn = 0;
-    
-    if (lobby.phase === 'round1') {
+  // FIX: Check if all connected players have submitted for the current round
+  if (lobby.phase === 'round1') {
+    if (lobby.round1.length >= connectedPlayers.length) {
+      // All connected players have submitted for round 1, move to round 2
       lobby.phase = 'round2';
+      lobby.turn = 0;
+      // Find first connected player for round 2
+      for (let i = 0; i < lobby.players.length; i++) {
+        if (lobby.players[i]?.ws?.readyState === 1) {
+          lobby.turn = i;
+          break;
+        }
+      }
+      
       broadcast(lobby, {
         type: 'turnUpdate',
-        phase: 'round1',
+        phase: 'round1', // This tells clients round 1 is complete
         round1: lobby.round1,
         round2: lobby.round2,
-        currentPlayer: lobby.players[0]?.name || 'Unknown'
+        currentPlayer: lobby.players[lobby.turn]?.name || 'Unknown',
+        timeRemaining: 30
       });
-    } else if (lobby.phase === 'round2') {
+      
+      startTurnTimer(lobby);
+      return;
+    }
+  } else if (lobby.phase === 'round2') {
+    if (lobby.round2.length >= connectedPlayers.length) {
+      // All connected players have submitted for round 2, move to voting
       lobby.phase = 'voting';
       if (lobby.turnTimeout) {
         clearTimeout(lobby.turnTimeout);
@@ -611,13 +626,64 @@ wss.on('connection', (ws, req) => {
         }
 
         const entry = { name: player.name, word: msg.word };
-        lobby.phase === 'round1' ? lobby.round1.push(entry) : lobby.round2.push(entry);
+        if (lobby.phase === 'round1') {
+          lobby.round1.push(entry);
+        } else if (lobby.phase === 'round2') {
+          lobby.round2.push(entry);
+        }
 
         if (lobby.turnTimeout) {
           clearTimeout(lobby.turnTimeout);
           lobby.turnTimeout = null;
         }
 
+        const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
+        
+        // Check if current round is complete
+        if (lobby.phase === 'round1' && lobby.round1.length >= connectedPlayers.length) {
+          // Round 1 complete, move to round 2
+          lobby.phase = 'round2';
+          lobby.turn = 0;
+          // Find first connected player for round 2
+          for (let i = 0; i < lobby.players.length; i++) {
+            if (lobby.players[i]?.ws?.readyState === 1) {
+              lobby.turn = i;
+              break;
+            }
+          }
+          
+          broadcast(lobby, {
+            type: 'turnUpdate',
+            phase: 'round1', // This tells clients round 1 is complete
+            round1: lobby.round1,
+            round2: lobby.round2,
+            currentPlayer: lobby.players[lobby.turn]?.name || 'Unknown',
+            timeRemaining: 30
+          });
+          
+          startTurnTimer(lobby);
+          return;
+        } else if (lobby.phase === 'round2' && lobby.round2.length >= connectedPlayers.length) {
+          // Round 2 complete, move to voting
+          lobby.phase = 'voting';
+          broadcast(lobby, {
+            type: 'turnUpdate',
+            phase: 'round2',
+            round1: lobby.round1,
+            round2: lobby.round2,
+            currentPlayer: 'Voting Phase'
+          });
+          
+          setTimeout(() => {
+            broadcast(lobby, {
+              type: 'startVoting',
+              players: lobby.players.map(p => p.name)
+            });
+          }, 500);
+          return;
+        }
+
+        // If round not complete, find next connected player
         let nextIndex = (lobby.turn + 1) % lobby.players.length;
         let attempts = 0;
         
@@ -630,48 +696,6 @@ wss.on('connection', (ws, req) => {
           attempts++;
         }
         
-        if (attempts >= lobby.players.length) {
-          lobby.turn = 0;
-          
-          const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
-          const currentRound = lobby.phase === 'round1' ? lobby.round1 : lobby.round2;
-          
-          if (currentRound.length >= connectedPlayers.length) {
-            if (lobby.phase === 'round1') {
-              lobby.phase = 'round2';
-              lobby.turn = 0;
-              for (let i = 0; i < lobby.players.length; i++) {
-                if (lobby.players[i]?.ws?.readyState === 1) {
-                  lobby.turn = i;
-                  break;
-                }
-              }
-            } else if (lobby.phase === 'round2') {
-              lobby.phase = 'voting';
-              if (lobby.turnTimeout) {
-                clearTimeout(lobby.turnTimeout);
-                lobby.turnTimeout = null;
-              }
-              
-              broadcast(lobby, {
-                type: 'turnUpdate',
-                phase: 'round2',
-                round1: lobby.round1,
-                round2: lobby.round2,
-                currentPlayer: 'Voting Phase'
-              });
-              
-              setTimeout(() => {
-                broadcast(lobby, {
-                  type: 'startVoting',
-                  players: lobby.players.map(p => p.name)
-                });
-              }, 500);
-              return;
-            }
-          }
-        }
-
         startTurnTimer(lobby);
 
         broadcast(lobby, {
