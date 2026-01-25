@@ -1,6 +1,6 @@
 # Impostor Word Game
 
-A mobile-first, online multiplayer impostor word game inspired by "Splash".
+A mobile-first, online multiplayer impostor word game.
 
 Players take turns giving clues related to a secret word, then vote to find the impostor.
 
