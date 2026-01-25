@@ -49,6 +49,7 @@ let hasShownConnectionWarning = false;
 let hasClickedRestart = false;
 let turnTimer = null;
 let currentTurnTime = 30;
+let spectatorWantsToJoin = false; // NEW: Track if spectator wants to join next game
 
 let lastPingTime = 0;
 let connectionLatency = 0;
@@ -184,6 +185,12 @@ function updateTimerDisplay(timeLeft, circumference) {
   
   const offset = circumference - (progress / 100) * circumference;
   timerProgress.style.strokeDashoffset = offset;
+  
+  // Fix: Ensure timer animation is visible regardless of tab visibility
+  // Force a reflow to ensure animation updates
+  timerProgress.style.display = 'none';
+  timerProgress.offsetHeight; // Trigger reflow
+  timerProgress.style.display = '';
 }
 
 function stopTurnTimer() {
@@ -268,6 +275,7 @@ function exitLobby() {
   currentLobbyId = null;
   isReconnecting = false;
   connectionAttempts = 0;
+  spectatorWantsToJoin = false; // Reset when exiting lobby
   updateConnectionStatus('disconnected');
   
   stopTurnTimer();
@@ -294,6 +302,7 @@ function resetToLobbyScreen() {
   currentLobbyId = null;
   isReconnecting = false;
   connectionAttempts = 0;
+  spectatorWantsToJoin = false; // Reset when resetting
   updateConnectionStatus('disconnected');
   
   stopTurnTimer();
@@ -307,6 +316,7 @@ function resetToLobbyScreen() {
 function joinAsPlayer() {
   if (isReconnecting) return;
   isSpectator = false;
+  spectatorWantsToJoin = false;
   joinType = 'joinLobby';
   connectionAttempts = 0;
   reconnectDelay = 2000;
@@ -316,6 +326,7 @@ function joinAsPlayer() {
 function joinAsSpectator() {
   if (isReconnecting) return;
   isSpectator = true;
+  spectatorWantsToJoin = false;
   joinType = 'joinSpectator';
   connectionAttempts = 0;
   reconnectDelay = 2000;
@@ -462,12 +473,17 @@ function connect() {
           exitLobbyBtn.style.display = 'none';
           
           hasClickedRestart = false;
+          spectatorWantsToJoin = false; // Reset when new game starts
           
           results.innerHTML = ''; 
           restart.classList.add('hidden');
           restart.style.opacity = '1';
           
-          if (isSpectator || d.role === 'spectator') {
+          // NEW: If spectator had previously indicated they want to join, show Restart button
+          if (isSpectator && spectatorWantsToJoin) {
+            restart.innerText = 'Restart Game';
+            restart.classList.remove('hidden');
+          } else if (isSpectator || d.role === 'spectator') {
             restart.innerText = 'Join Next Game';
             restart.classList.remove('hidden');
           } else {
@@ -507,7 +523,6 @@ function connect() {
         }
 
         if (d.type === 'turnUpdate') {
-          // FIX: Update round displays correctly
           round1El.innerHTML = d.round1.map(r => `${r.name}: ${capitalize(r.word)}`).join('<br>');
           round2El.innerHTML = d.round2.map(r => `${r.name}: ${capitalize(r.word)}`).join('<br>');
           
@@ -590,7 +605,14 @@ function connect() {
           
           exitLobbyBtn.style.display = 'block';
           
+          // NEW: If spectator wants to join, show Restart button instead of Join Next Game
           if (!isSpectator) {
+            restart.classList.remove('hidden');
+            restart.innerText = 'Restart Game';
+            restart.disabled = false;
+            restart.style.opacity = '1';
+            hasClickedRestart = false;
+          } else if (spectatorWantsToJoin) {
             restart.classList.remove('hidden');
             restart.innerText = 'Restart Game';
             restart.disabled = false;
@@ -640,7 +662,14 @@ function connect() {
           
           exitLobbyBtn.style.display = 'block';
           
+          // NEW: If spectator wants to join, show Restart button instead of Join Next Game
           if (!isSpectator) {
+            restart.classList.remove('hidden');
+            restart.innerText = 'Restart Game';
+            restart.disabled = false;
+            restart.style.opacity = '1';
+            hasClickedRestart = false;
+          } else if (spectatorWantsToJoin) {
             restart.classList.remove('hidden');
             restart.innerText = 'Restart Game';
             restart.disabled = false;
@@ -663,7 +692,14 @@ function connect() {
             restart.disabled = true;
             restart.style.opacity = '0.7';
           } else {
-            restart.innerText = isSpectator ? 'Join Next Game' : 'Restart Game';
+            // NEW: Update button text based on spectatorWantsToJoin state
+            if (isSpectator && spectatorWantsToJoin) {
+              restart.innerText = 'Restart Game';
+            } else if (isSpectator) {
+              restart.innerText = 'Join Next Game';
+            } else {
+              restart.innerText = 'Restart Game';
+            }
             restart.disabled = false;
             restart.style.opacity = '1';
           }
@@ -672,9 +708,9 @@ function connect() {
         if (d.type === 'roleChanged') {
           // Changed: Remove the alert popup
           isSpectator = false;
+          spectatorWantsToJoin = false; // Reset when role actually changes
           nickname.value = nickname.value.replace('👁️ ', '');
           nickname.disabled = false;
-          // Button appearance will be updated automatically via other messages
         }
 
       } catch (error) {
@@ -757,6 +793,8 @@ restart.onclick = () => {
   }
   
   if (isSpectator) {
+    // NEW: Track that spectator wants to join next game
+    spectatorWantsToJoin = true;
     ws.send(JSON.stringify({ type: 'restart' }));
     restart.innerText = 'Joining next game...';
     restart.disabled = true;
@@ -805,6 +843,7 @@ input.addEventListener('keypress', (e) => {
 
 let hiddenTime = null;
 let pageHidden = false;
+let timerStartTime = null; // Track when timer started
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
@@ -827,6 +866,15 @@ document.addEventListener('visibilitychange', () => {
     pageHidden = false;
     const hiddenDuration = hiddenTime ? Date.now() - hiddenTime : 0;
     safeLog(`Page visible after ${hiddenDuration}ms`);
+    
+    // NEW: Fix timer animation when switching back to tab
+    if (turnTimer && timerStartTime) {
+      const elapsed = Date.now() - timerStartTime;
+      const timeLeft = Math.max(0, currentTurnTime - Math.floor(elapsed / 1000));
+      
+      // Restart timer with correct remaining time
+      startTurnTimer(timeLeft);
+    }
     
     if (hiddenDuration > 5000) {
       if (ws && ws.readyState !== WebSocket.OPEN) {
