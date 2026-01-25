@@ -11,7 +11,7 @@ const players = document.getElementById('players');
 
 const gameHeader = document.getElementById('gameHeader');
 const lobbyCodeDisplay = document.getElementById('lobbyCodeDisplay');
-const playerNameDisplay = document.getElementById('playerNameDisplay'); // Will be added to HTML
+const playerNameDisplay = document.getElementById('playerNameDisplay');
 const connectionDot = document.getElementById('connectionDot');
 const connectionText = document.getElementById('connectionText');
 
@@ -21,7 +21,6 @@ const roleReveal = document.getElementById('roleReveal');
 const roleBack = roleReveal.querySelector('.role-back');
 const roleText = document.getElementById('roleText');
 const wordEl = document.getElementById('word');
-const hintEl = document.getElementById('hint'); // Will be added to HTML
 const round1El = document.getElementById('round1');
 const round2El = document.getElementById('round2');
 const turnEl = document.getElementById('turn');
@@ -52,7 +51,8 @@ let hasClickedRestart = false;
 let turnTimer = null;
 let currentTurnTime = 30;
 let spectatorWantsToJoin = false;
-let myPlayerName = ''; // Store the player's name
+let myPlayerName = '';
+let spectatorHasClickedRestart = false; // Track if spectator clicked restart
 
 let lastPingTime = 0;
 let connectionLatency = 0;
@@ -283,6 +283,7 @@ function exitLobby() {
   isReconnecting = false;
   connectionAttempts = 0;
   spectatorWantsToJoin = false;
+  spectatorHasClickedRestart = false;
   myPlayerName = '';
   updateConnectionStatus('disconnected');
   
@@ -311,6 +312,7 @@ function resetToLobbyScreen() {
   isReconnecting = false;
   connectionAttempts = 0;
   spectatorWantsToJoin = false;
+  spectatorHasClickedRestart = false;
   myPlayerName = '';
   updateConnectionStatus('disconnected');
   
@@ -326,6 +328,7 @@ function joinAsPlayer() {
   if (isReconnecting) return;
   isSpectator = false;
   spectatorWantsToJoin = false;
+  spectatorHasClickedRestart = false;
   joinType = 'joinLobby';
   connectionAttempts = 0;
   reconnectDelay = 2000;
@@ -336,6 +339,7 @@ function joinAsSpectator() {
   if (isReconnecting) return;
   isSpectator = true;
   spectatorWantsToJoin = false;
+  spectatorHasClickedRestart = false;
   joinType = 'joinSpectator';
   connectionAttempts = 0;
   reconnectDelay = 2000;
@@ -488,25 +492,23 @@ function connect() {
           exitLobbyBtn.style.display = 'none';
           
           hasClickedRestart = false;
+          spectatorHasClickedRestart = false;
           spectatorWantsToJoin = false; // Reset when new game starts
           
           results.innerHTML = ''; 
           restart.classList.add('hidden');
           restart.style.opacity = '1';
           
-          // NEW: If spectator had previously indicated they want to join, show Restart button
-          if (isSpectator && spectatorWantsToJoin) {
-            restart.innerText = 'Restart Game';
-            restart.classList.remove('hidden');
-          } else if (isSpectator || d.role === 'spectator') {
+          // Reset button states
+          if (isSpectator || d.role === 'spectator') {
             restart.innerText = 'Join Next Game';
             restart.classList.remove('hidden');
+            restart.disabled = false;
+            restart.style.opacity = '1';
           } else {
             restart.innerText = 'Restart Game';
             restart.classList.add('hidden');
           }
-          
-          restart.disabled = false;
           
           input.value = '';
           
@@ -525,24 +527,23 @@ function connect() {
           if (d.role === 'spectator') {
             roleBack.className = 'role-back spectator';
             roleText.innerHTML = '<span style="color:#9b59b6">👁️ Spectator</span>';
-            wordEl.textContent = `Word: ${capitalize(d.word)}`;
-            // Show hint for spectators
+            // Spectators see both word and hint
+            wordEl.innerHTML = `<div style="margin-bottom: 5px;"><strong>Word:</strong> ${capitalize(d.word)}</div>`;
             if (d.hint) {
-              wordEl.textContent += ` | Hint: ${capitalize(d.hint)}`;
+              wordEl.innerHTML += `<div><strong>Hint:</strong> ${capitalize(d.hint)}</div>`;
             }
           } else if (d.role === 'civilian') {
             roleBack.className = `role-back ${d.role}`;
             roleText.innerHTML = '<span style="color:#2ecc71">Civilian</span>';
+            // Civilians only see the word
             wordEl.textContent = `Word: ${capitalize(d.word)}`;
-            if (d.hint) {
-              wordEl.textContent += ` | Hint: ${capitalize(d.hint)}`;
-            }
           } else if (d.role === 'impostor') {
             roleBack.className = `role-back ${d.role}`;
             roleText.innerHTML = '<span style="color:#e74c3c">Impostor</span>';
+            // Impostors see the hint (and optionally the word if sent)
             wordEl.textContent = `Hint: ${capitalize(d.word)}`;
             if (d.secretWord) {
-              wordEl.textContent += ` | The word is: ${capitalize(d.secretWord)}`;
+              wordEl.innerHTML += `<div style="margin-top: 8px; font-size: 14px; color: #f1c40f;"><em>The actual word is: ${capitalize(d.secretWord)}</em></div>`;
             }
           }
         }
@@ -638,7 +639,7 @@ function connect() {
           
           exitLobbyBtn.style.display = 'block';
           
-          // NEW: If spectator wants to join, show Restart button instead of Join Next Game
+          // Show appropriate restart button
           if (!isSpectator) {
             restart.classList.remove('hidden');
             restart.innerText = 'Restart Game';
@@ -650,13 +651,13 @@ function connect() {
             restart.innerText = 'Restart Game';
             restart.disabled = false;
             restart.style.opacity = '1';
-            hasClickedRestart = false;
+            spectatorHasClickedRestart = false;
           } else {
             restart.classList.remove('hidden');
             restart.innerText = 'Join Next Game';
             restart.disabled = false;
             restart.style.opacity = '1';
-            hasClickedRestart = false;
+            spectatorHasClickedRestart = false;
           }
           
           turnEl.textContent = 'Game Ended Early';
@@ -695,7 +696,7 @@ function connect() {
           
           exitLobbyBtn.style.display = 'block';
           
-          // NEW: If spectator wants to join, show Restart button instead of Join Next Game
+          // Show appropriate restart button
           if (!isSpectator) {
             restart.classList.remove('hidden');
             restart.innerText = 'Restart Game';
@@ -707,43 +708,51 @@ function connect() {
             restart.innerText = 'Restart Game';
             restart.disabled = false;
             restart.style.opacity = '1';
-            hasClickedRestart = false;
+            spectatorHasClickedRestart = false;
           } else {
             restart.classList.remove('hidden');
             restart.innerText = 'Join Next Game';
             restart.disabled = false;
             restart.style.opacity = '1';
-            hasClickedRestart = false;
+            spectatorHasClickedRestart = false;
           }
           
           turnEl.textContent = isSpectator ? 'Spectating - Game Over' : 'Game Over - Results';
         }
 
         if (d.type === 'restartUpdate') {
-          if (hasClickedRestart) {
-            restart.innerText = `Waiting for others... (${d.readyCount}/${d.totalPlayers})`;
-            restart.disabled = true;
-            restart.style.opacity = '0.7';
+          // Handle spectator restart updates
+          if (d.isSpectator) {
+            if (d.wantsToJoin || spectatorHasClickedRestart) {
+              // Spectator has clicked to join or restart, show waiting state
+              restart.innerText = `Waiting for others... (${d.readyCount}/${d.totalPlayers})`;
+              restart.disabled = true;
+              restart.style.opacity = '0.7';
+            } else {
+              // Spectator hasn't clicked yet
+              restart.innerText = 'Join Next Game';
+              restart.disabled = false;
+              restart.style.opacity = '1';
+            }
           } else {
-            // NEW: Update button text based on spectatorWantsToJoin state
-            if (d.isSpectator) {
-              if (d.wantsToJoin || spectatorWantsToJoin) {
-                restart.innerText = 'Restart Game';
-              } else {
-                restart.innerText = 'Join Next Game';
-              }
+            // Handle player restart updates
+            if (hasClickedRestart) {
+              restart.innerText = `Waiting for others... (${d.readyCount}/${d.totalPlayers})`;
+              restart.disabled = true;
+              restart.style.opacity = '0.7';
             } else {
               restart.innerText = 'Restart Game';
+              restart.disabled = false;
+              restart.style.opacity = '1';
             }
-            restart.disabled = false;
-            restart.style.opacity = '1';
           }
         }
 
         if (d.type === 'roleChanged') {
           // Changed: Remove the alert popup
           isSpectator = false;
-          spectatorWantsToJoin = false; // Reset when role actually changes
+          spectatorWantsToJoin = false;
+          spectatorHasClickedRestart = false;
           nickname.value = nickname.value.replace('👁️ ', '');
           nickname.disabled = false;
           myPlayerName = nickname.value;
@@ -752,6 +761,11 @@ function connect() {
           if (document.getElementById('playerNameDisplay')) {
             document.getElementById('playerNameDisplay').textContent = myPlayerName;
           }
+          
+          // Update restart button
+          restart.innerText = 'Restart Game';
+          restart.disabled = false;
+          restart.style.opacity = '1';
         }
 
       } catch (error) {
@@ -834,12 +848,22 @@ restart.onclick = () => {
   }
   
   if (isSpectator) {
-    // NEW: Track that spectator wants to join next game
-    spectatorWantsToJoin = true;
-    ws.send(JSON.stringify({ type: 'restart' }));
-    restart.innerText = 'Joining next game...';
-    restart.disabled = true;
-    restart.style.opacity = '0.7';
+    // First click: Join Next Game -> transition to Restart Game
+    // Second click: Restart Game -> show waiting state
+    if (restart.innerText === 'Join Next Game') {
+      spectatorWantsToJoin = true;
+      spectatorHasClickedRestart = true;
+      ws.send(JSON.stringify({ type: 'restart' }));
+      restart.innerText = 'Joining next game...';
+      restart.disabled = true;
+      restart.style.opacity = '0.7';
+    } else if (restart.innerText === 'Restart Game') {
+      spectatorHasClickedRestart = true;
+      ws.send(JSON.stringify({ type: 'restart' }));
+      restart.innerText = 'Waiting for others...';
+      restart.disabled = true;
+      restart.style.opacity = '0.7';
+    }
   } else {
     hasClickedRestart = true;
     ws.send(JSON.stringify({ type: 'restart' }));
