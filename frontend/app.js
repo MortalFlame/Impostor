@@ -23,9 +23,9 @@ const wordEl = document.getElementById('word');
 const round1El = document.getElementById('round1');
 const round2El = document.getElementById('round2');
 const turnEl = document.getElementById('turn');
-const turnTimerEl = document.getElementById('turnTimer'); // NEW: Timer element
-const timerProgress = turnTimerEl.querySelector('.timer-progress'); // NEW: Timer progress circle
-const timerText = turnTimerEl.querySelector('.timer-text'); // NEW: Timer text
+const turnTimerEl = document.getElementById('turnTimer');
+const timerProgress = turnTimerEl.querySelector('.timer-progress');
+const timerText = turnTimerEl.querySelector('.timer-text');
 const input = document.getElementById('input');
 const submit = document.getElementById('submit');
 const voting = document.getElementById('voting');
@@ -48,7 +48,7 @@ let reconnectDelay = 2000;
 let hasShownConnectionWarning = false;
 let hasClickedRestart = false;
 let turnTimer = null;
-let currentTurnTime = 30; // Store current time for color transitions
+let currentTurnTime = 30;
 
 let lastPingTime = 0;
 let connectionLatency = 0;
@@ -132,12 +132,9 @@ function showConnectionWarning(message) {
   }, 5000);
 }
 
-// NEW: Update timer color based on remaining time
 function updateTimerColor(timeLeft) {
-  // Remove all color classes
   timerProgress.classList.remove('green', 'yellow', 'orange', 'red');
   
-  // Add appropriate color class
   if (timeLeft > 20) {
     timerProgress.classList.add('green');
   } else if (timeLeft > 15) {
@@ -149,20 +146,16 @@ function updateTimerColor(timeLeft) {
   }
 }
 
-// NEW: Start client-side turn timer with circular progress
 function startTurnTimer(seconds) {
   if (turnTimer) clearInterval(turnTimer);
   
   let timeLeft = seconds;
   currentTurnTime = seconds;
   
-  // Show timer
   turnTimerEl.classList.remove('hidden');
   
-  // Calculate circumference (2 * π * r) where r = 45
-  const circumference = 2 * Math.PI * 45;
+  const circumference = 2 * Math.PI * 18; // Smaller radius: 18 instead of 45
   
-  // Initial update
   updateTimerDisplay(timeLeft, circumference);
   
   turnTimer = setInterval(() => {
@@ -173,7 +166,6 @@ function startTurnTimer(seconds) {
       turnTimer = null;
       turnTimerEl.classList.add('hidden');
       if (!isSpectator && submit.disabled === false) {
-        // Your turn but timer expired
         turnEl.textContent = 'Time expired! Waiting for next player...';
       }
     } else {
@@ -182,23 +174,18 @@ function startTurnTimer(seconds) {
   }, 1000);
 }
 
-// NEW: Update timer display
 function updateTimerDisplay(timeLeft, circumference) {
-  // Update text
   timerText.textContent = timeLeft;
   
-  // Update color
   updateTimerColor(timeLeft);
   
-  // Calculate progress (0 to 100%)
   const progress = (timeLeft / currentTurnTime) * 100;
   
-  // Calculate stroke dash offset
+  // Clockwise rotation: start at 12 o'clock and go clockwise
   const offset = circumference - (progress / 100) * circumference;
   timerProgress.style.strokeDashoffset = offset;
 }
 
-// NEW: Stop timer
 function stopTurnTimer() {
   if (turnTimer) {
     clearInterval(turnTimer);
@@ -253,7 +240,6 @@ function updatePlayerList(playersData, spectatorsData = []) {
   players.innerHTML = playersHtml;
 }
 
-// Exit lobby function
 function exitLobby() {
   if (ws && ws.readyState === WebSocket.OPEN) {
     try {
@@ -442,8 +428,9 @@ function connect() {
             players.innerHTML += `<br><i style="color:#f39c12">Game in progress: ${d.phase}</i>`;
           }
           
+          // FIX: Update spectator instructions
           if (isSpectator && (d.phase === 'lobby' || d.phase === 'results')) {
-            players.innerHTML += `<br><i style="color:#9b59b6">Click "Join Lobby" to play next game</i>`;
+            players.innerHTML += `<br><i style="color:#9b59b6">Click "Join Next Game" button to play next round</i>`;
           }
         }
 
@@ -458,7 +445,16 @@ function connect() {
           results.innerHTML = ''; 
           restart.classList.add('hidden');
           restart.style.opacity = '1';
-          restart.innerText = 'Restart Game';
+          
+          // FIX: Show appropriate restart button for spectators
+          if (isSpectator || d.role === 'spectator') {
+            restart.innerText = 'Join Next Game';
+            restart.classList.remove('hidden');
+          } else {
+            restart.innerText = 'Restart Game';
+            restart.classList.add('hidden');
+          }
+          
           restart.disabled = false;
           
           input.value = '';
@@ -540,7 +536,6 @@ function connect() {
           }
         }
 
-        // NEW: Handle game end due to player count or impostor leaving
         if (d.type === 'gameEndEarly') {
           stopTurnTimer();
           
@@ -574,9 +569,16 @@ function connect() {
           
           exitLobbyBtn.style.display = 'block';
           
+          // FIX: Show appropriate restart button
           if (!isSpectator) {
             restart.classList.remove('hidden');
             restart.innerText = 'Restart Game';
+            restart.disabled = false;
+            restart.style.opacity = '1';
+            hasClickedRestart = false;
+          } else {
+            restart.classList.remove('hidden');
+            restart.innerText = 'Join Next Game';
             restart.disabled = false;
             restart.style.opacity = '1';
             hasClickedRestart = false;
@@ -596,6 +598,7 @@ function connect() {
             return `<div style="color:${roleColor}">${r.name}: ${roleName}</div>`;
           }).join('');
           
+          // FIX: Change vote format to 'x voted for -> y'
           const votesHtml = Object.entries(d.votes).map(([voter, votedFor]) => {
             const voterRole = d.roles.find(r => r.name === voter)?.role;
             const votedForRole = d.roles.find(r => r.name === votedFor)?.role;
@@ -603,7 +606,7 @@ function connect() {
             const voterColor = voterRole === 'civilian' ? '#2ecc71' : '#e74c3c';
             const votedForColor = votedForRole === 'civilian' ? '#2ecc71' : '#e74c3c';
             
-            return `<div><span style="color:${voterColor}">${voter}</span> voted <span style="color:${votedForColor}">${votedFor}</span></div>`;
+            return `<div><span style="color:${voterColor}">${voter}</span> voted for -> <span style="color:${votedForColor}">${votedFor}</span></div>`;
           }).join('');
           
           results.innerHTML =
@@ -611,12 +614,14 @@ function connect() {
             `<div><b>Word:</b> ${capitalize(d.secretWord)}</div>` +
             `<div><b>Hint:</b> ${capitalize(d.hint)}</div><hr>` +
             '<b>Roles</b><br>' + rolesHtml +
-            '<hr><b>Votes</b><br>' + votesHtml;
+            '<hr><b>Votes</b><br>' + votesHtml +
+            '<br><br>'; // Add blank space before restart button
 
           voting.innerHTML = '';
           
           exitLobbyBtn.style.display = 'block';
           
+          // FIX: Show appropriate restart button
           if (!isSpectator) {
             restart.classList.remove('hidden');
             restart.innerText = 'Restart Game';
@@ -624,9 +629,11 @@ function connect() {
             restart.style.opacity = '1';
             hasClickedRestart = false;
           } else {
-            results.innerHTML += `<hr><div style="text-align:center; color:#9b59b6">
-              <i>👁️ You are spectating. Click "Join Lobby" to play next game.</i>
-            </div>`;
+            restart.classList.remove('hidden');
+            restart.innerText = 'Join Next Game';
+            restart.disabled = false;
+            restart.style.opacity = '1';
+            hasClickedRestart = false;
           }
           
           turnEl.textContent = isSpectator ? 'Spectating - Game Over' : 'Game Over - Results';
@@ -638,11 +645,19 @@ function connect() {
             restart.disabled = true;
             restart.style.opacity = '0.7';
           } else {
-            restart.innerText = 'Restart Game';
+            restart.innerText = isSpectator ? 'Join Next Game' : 'Restart Game';
             restart.disabled = false;
             restart.style.opacity = '1';
           }
         }
+
+        if (d.type === 'roleChanged') {
+          alert(d.message);
+          isSpectator = false;
+          nickname.value = nickname.value.replace('👁️ ', '');
+          nickname.disabled = false;
+        }
+
       } catch (error) {
         safeError('Error processing message:', error);
       }
@@ -716,18 +731,27 @@ submit.onclick = () => {
   input.value = '';
 };
 
+// FIX: Separate restart handling for spectators vs players
 restart.onclick = () => {
-  if (isSpectator) return;
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     showConnectionWarning('Connection lost. Please wait for reconnection...');
     return;
   }
   
-  hasClickedRestart = true;
-  ws.send(JSON.stringify({ type: 'restart' }));
-  restart.innerText = 'Waiting for others...';
-  restart.disabled = true;
-  restart.style.opacity = '0.7';
+  if (isSpectator) {
+    // Spectators send a regular restart message, server will convert them
+    ws.send(JSON.stringify({ type: 'restart' }));
+    restart.innerText = 'Joining next game...';
+    restart.disabled = true;
+    restart.style.opacity = '0.7';
+  } else {
+    // Players send regular restart
+    hasClickedRestart = true;
+    ws.send(JSON.stringify({ type: 'restart' }));
+    restart.innerText = 'Waiting for others...';
+    restart.disabled = true;
+    restart.style.opacity = '0.7';
+  }
 };
 
 window.vote = (v, btnElement) => {
