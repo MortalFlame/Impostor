@@ -120,6 +120,7 @@ function endGameEarly(lobby, reason) {
   
   lobby.phase = 'results';
   lobby.restartReady = [];
+  lobby.spectatorsWantingToJoin = [];
 }
 
 function startGame(lobby) {
@@ -134,6 +135,7 @@ function startGame(lobby) {
   lobby.round1 = [];
   lobby.round2 = [];
   lobby.restartReady = [];
+  lobby.spectatorsWantingToJoin = [];
   lobby.turnTimeout = null;
 
   lobby.spectators.forEach(s => s.vote = '');
@@ -155,9 +157,8 @@ function startGame(lobby) {
       player.ws.send(JSON.stringify({
         type: 'gameStart',
         role: player.role,
-        word: player.role === 'civilian' ? word : hint,
-        secretWord: word, // Only for impostor and spectator
-        hint: hint
+        word: player.role === 'civilian' ? word : hint
+        // Do NOT send secretWord to impostor
       }));
     } catch (err) {
       console.log(`Failed to send gameStart to ${player.name}`);
@@ -172,7 +173,6 @@ function startGame(lobby) {
           role: 'spectator',
           word: word, // Spectators see the word
           hint: hint, // Spectators see the hint
-          secretWord: word,
           isSpectator: true
         }));
       } catch (err) {
@@ -472,7 +472,9 @@ wss.on('connection', (ws, req) => {
             phase: 'lobby', 
             owner: msg.playerId,
             createdAt: Date.now(),
-            turnTimeout: null
+            turnTimeout: null,
+            restartReady: [],
+            spectatorsWantingToJoin: []
           }; 
           console.log(`Created new lobby: ${lobbyId}`);
         }
@@ -550,8 +552,10 @@ wss.on('connection', (ws, req) => {
           
           if (player.isSpectator) {
             lobby.spectators = lobby.spectators.filter(s => s.id !== player.id);
+            lobby.spectatorsWantingToJoin = lobby.spectatorsWantingToJoin.filter(id => id !== player.id);
           } else {
             lobby.players = lobby.players.filter(p => p.id !== player.id);
+            lobby.restartReady = lobby.restartReady.filter(id => id !== player.id);
             
             if (lobby.owner === player.id && lobby.players.length > 0) {
               const newOwner = lobby.players.find(p => p.ws?.readyState === 1);
@@ -560,10 +564,6 @@ wss.on('connection', (ws, req) => {
               } else if (lobby.players.length > 0) {
                 lobby.owner = lobby.players[0].id;
               }
-            }
-            
-            if (lobby.phase === 'results' || lobby.phase === 'lobby') {
-              lobby.restartReady = lobby.restartReady.filter(id => id !== player.id);
             }
           }
           
@@ -622,78 +622,27 @@ wss.on('connection', (ws, req) => {
       
       if (isSpectator) {
         if (msg.type === 'restart') {
-          // Mark spectator as wanting to join next game
-          player.wantsToJoinNextGame = true;
-          
-          if (!lobby.restartReady.includes(player.id)) {
-            lobby.restartReady.push(player.id);
-          }
-          
-          // Send restart update to everyone
-          const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
-          const spectatorsWantingToJoin = lobby.spectators.filter(s => 
-            s.ws?.readyState === 1 && s.wantsToJoinNextGame
-          );
-          
-          const totalForNextGame = connectedPlayers.length + spectatorsWantingToJoin.length;
-          
-          lobby.players.forEach(p => {
-            if (p.ws?.readyState === 1) {
-              try {
-                p.ws.send(JSON.stringify({
-                  type: 'restartUpdate',
-                  readyCount: lobby.restartReady.length,
-                  totalPlayers: totalForNextGame,
-                  spectatorsWantingToJoin: spectatorsWantingToJoin.length
-                }));
-              } catch (err) {
-                console.log(`Failed to send restart update to ${p.name}`);
-              }
+          // Spectator wants to join next game
+          if (!player.wantsToJoinNextGame) {
+            player.wantsToJoinNextGame = true;
+            if (!lobby.spectatorsWantingToJoin.includes(player.id)) {
+              lobby.spectatorsWantingToJoin.push(player.id);
             }
-          });
-          
-          lobby.spectators.forEach(s => {
-            if (s.ws?.readyState === 1) {
-              try {
-                s.ws.send(JSON.stringify({
-                  type: 'restartUpdate',
-                  readyCount: lobby.restartReady.length,
-                  totalPlayers: totalForNextGame,
-                  spectatorsWantingToJoin: spectatorsWantingToJoin.length,
-                  isSpectator: true,
-                  wantsToJoin: s.wantsToJoinNextGame
-                }));
-              } catch (err) {
-                console.log(`Failed to send restart update to spectator ${s.name}`);
-              }
-            }
-          });
-          
-          // Check if all players AND spectators wanting to join are ready
-          if (lobby.restartReady.length === totalForNextGame) {
-            // Move spectators who want to join to players
-            spectatorsWantingToJoin.forEach(spectator => {
-              const spectatorIndex = lobby.spectators.findIndex(s => s.id === spectator.id);
-              if (spectatorIndex !== -1) {
-                lobby.spectators.splice(spectatorIndex, 1);
-                spectator.isSpectator = false;
-                spectator.wantsToJoinNextGame = false;
-                spectator.role = null;
-                lobby.players.push(spectator);
-                
-                try {
-                  spectator.ws.send(JSON.stringify({
-                    type: 'roleChanged',
-                    message: 'You are now a player for the next game!',
-                    isSpectator: false
-                  }));
-                } catch (err) {
-                  console.log(`Failed to send role change to ${spectator.name}`);
-                }
-              }
-            });
             
-            startGame(lobby);
+            // Send update to spectator
+            try {
+              ws.send(JSON.stringify({
+                type: 'restartUpdate',
+                readyCount: lobby.restartReady.length,
+                totalPlayers: lobby.players.filter(p => p.ws?.readyState === 1).length,
+                spectatorsWantingToJoin: lobby.spectatorsWantingToJoin.length,
+                isSpectator: true,
+                wantsToJoin: true,
+                status: 'joining'
+              }));
+            } catch (err) {
+              console.log(`Failed to send restart update to spectator ${player.name}`);
+            }
           }
         }
         return;
@@ -841,6 +790,7 @@ wss.on('connection', (ws, req) => {
           });
           lobby.phase = 'results';
           lobby.restartReady = [];
+          lobby.spectatorsWantingToJoin = [];
           
           if (lobby.turnTimeout) {
             clearTimeout(lobby.turnTimeout);
@@ -850,25 +800,23 @@ wss.on('connection', (ws, req) => {
       }
 
       if (msg.type === 'restart') {
-        if (!lobby.restartReady.includes(player.id)) {
+        // Only players (not spectators) can restart the game
+        if (!isSpectator && !lobby.restartReady.includes(player.id)) {
           lobby.restartReady.push(player.id);
         }
         
         const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
-        const spectatorsWantingToJoin = lobby.spectators.filter(s => 
-          s.ws?.readyState === 1 && s.wantsToJoinNextGame
-        );
         
-        const totalForNextGame = connectedPlayers.length + spectatorsWantingToJoin.length;
-        
+        // Send restart update to players
         lobby.players.forEach(p => {
           if (p.ws?.readyState === 1) {
             try {
               p.ws.send(JSON.stringify({
                 type: 'restartUpdate',
                 readyCount: lobby.restartReady.length,
-                totalPlayers: totalForNextGame,
-                spectatorsWantingToJoin: spectatorsWantingToJoin.length
+                totalPlayers: connectedPlayers.length,
+                spectatorsWantingToJoin: lobby.spectatorsWantingToJoin.length,
+                isSpectator: false
               }));
             } catch (err) {
               console.log(`Failed to send restart update to ${p.name}`);
@@ -876,16 +824,18 @@ wss.on('connection', (ws, req) => {
           }
         });
         
+        // Send restart update to spectators
         lobby.spectators.forEach(s => {
           if (s.ws?.readyState === 1) {
             try {
               s.ws.send(JSON.stringify({
                 type: 'restartUpdate',
                 readyCount: lobby.restartReady.length,
-                totalPlayers: totalForNextGame,
-                spectatorsWantingToJoin: spectatorsWantingToJoin.length,
+                totalPlayers: connectedPlayers.length,
+                spectatorsWantingToJoin: lobby.spectatorsWantingToJoin.length,
                 isSpectator: true,
-                wantsToJoin: s.wantsToJoinNextGame
+                wantsToJoin: s.wantsToJoinNextGame || false,
+                status: s.wantsToJoinNextGame ? 'joining' : 'waiting'
               }));
             } catch (err) {
               console.log(`Failed to send restart update to spectator ${s.name}`);
@@ -893,9 +843,14 @@ wss.on('connection', (ws, req) => {
           }
         });
         
-        if (lobby.restartReady.length === totalForNextGame) {
+        // Check if all connected players are ready
+        if (lobby.restartReady.length === connectedPlayers.length) {
           // Move spectators who want to join to players
-          spectatorsWantingToJoin.forEach(spectator => {
+          const spectatorsToJoin = lobby.spectators.filter(s => 
+            s.ws?.readyState === 1 && s.wantsToJoinNextGame
+          );
+          
+          spectatorsToJoin.forEach(spectator => {
             const spectatorIndex = lobby.spectators.findIndex(s => s.id === spectator.id);
             if (spectatorIndex !== -1) {
               lobby.spectators.splice(spectatorIndex, 1);
@@ -915,6 +870,9 @@ wss.on('connection', (ws, req) => {
               }
             }
           });
+          
+          // Clear the spectators wanting to join list
+          lobby.spectatorsWantingToJoin = [];
           
           startGame(lobby);
         }
@@ -1128,8 +1086,7 @@ wss.on('connection', (ws, req) => {
             type: 'gameStart',
             role: roleToSend,
             word: wordToSend,
-            secretWord: lobby.word,
-            hint: lobby.hint,
+            hint: roleToSend === 'spectator' ? lobby.hint : undefined,
             isSpectator: roleToSend === 'spectator'
           }));
           
