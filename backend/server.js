@@ -158,7 +158,7 @@ function startGame(lobby) {
         type: 'gameStart',
         role: player.role,
         word: player.role === 'civilian' ? word : hint,
-        playerName: player.name  // Add player's name to gameStart
+        playerName: player.name
       }));
     } catch (err) {
       console.log(`Failed to send gameStart to ${player.name}`);
@@ -174,7 +174,7 @@ function startGame(lobby) {
           word: word,
           hint: hint,
           isSpectator: true,
-          playerName: s.name  // Add spectator's name
+          playerName: s.name
         }));
       } catch (err) {
         console.log(`Failed to send gameStart to spectator ${s.name}`);
@@ -492,7 +492,7 @@ wss.on('connection', (ws, req) => {
                   type: 'gameStart',
                   role: player.role,
                   word: player.role === 'civilian' ? lobby.word : lobby.hint,
-                  playerName: player.name  // Send player's name
+                  playerName: player.name
                 }));
                 
                 if (lobby.phase === 'round1' || lobby.phase === 'round2') {
@@ -964,7 +964,7 @@ wss.on('connection', (ws, req) => {
       lobbyId,
       isSpectator: false,
       playerName: player.name,
-      yourName: player.name  // Explicitly send the assigned name
+      yourName: player.name
     }));
     
     broadcast(lobby, { 
@@ -1036,7 +1036,7 @@ wss.on('connection', (ws, req) => {
       lobbyId: lobbyId,
       isSpectator: player.isSpectator || false,
       playerName: player.name,
-      yourName: player.name  // Explicitly send the assigned name
+      yourName: player.name
     }));
     
     broadcast(lobby, { 
@@ -1069,7 +1069,7 @@ wss.on('connection', (ws, req) => {
             word: wordToSend,
             hint: roleToSend === 'spectator' ? lobby.hint : undefined,
             isSpectator: roleToSend === 'spectator',
-            playerName: player.name  // Send player's name
+            playerName: player.name
           }));
           
           if (lobby.phase === 'round1' || lobby.phase === 'round2') {
