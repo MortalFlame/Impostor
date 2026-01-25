@@ -41,6 +41,12 @@ body {
   gap: 15px;
 }
 
+.lobby-code-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .lobby-code {
   font-family: monospace;
   font-size: 18px;
@@ -52,6 +58,16 @@ body {
   color: #6a8bff;
   min-width: 80px;
   text-align: center;
+}
+
+.player-name-display {
+  font-size: 14px;
+  color: #95a5a6;
+  font-weight: 600;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .connection-status {
@@ -272,6 +288,8 @@ button:disabled { opacity: 0.4; }
   justify-content: center;
   align-items: center;
   text-shadow: 0 0 12px rgba(0,0,0,0.7);
+  padding: 10px;
+  text-align: center;
 }
 
 .role-back.civilian {
@@ -299,7 +317,10 @@ button:disabled { opacity: 0.4; }
 }
 
 #word {
-  font-size: 20px;
+  font-size: 16px;
+  line-height: 1.4;
+  max-width: 100%;
+  word-wrap: break-word;
 }
 
 .turn-container {
@@ -381,6 +402,7 @@ button:disabled { opacity: 0.4; }
   border-radius: 14px;
   padding: 10px;
   font-size: 13px;
+  min-height: 120px;
 }
 
 .round h3 {
@@ -413,6 +435,7 @@ button:disabled { opacity: 0.4; }
 #results {
   margin-top: 12px;
   font-size: 14px;
+  line-height: 1.4;
 }
 
 @keyframes fadeUp {
