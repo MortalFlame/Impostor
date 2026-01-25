@@ -179,8 +179,7 @@ function startTurnTimer(seconds) {
 }
 
 function updateTimerDisplay(timeLeft, circumference) {
-  // Remove the number countdown - only update visual progress
-  timerText.textContent = ''; // Empty text instead of showing number
+  timerText.textContent = '';
   
   updateTimerColor(timeLeft);
   
@@ -189,10 +188,8 @@ function updateTimerDisplay(timeLeft, circumference) {
   const offset = circumference - (progress / 100) * circumference;
   timerProgress.style.strokeDashoffset = offset;
   
-  // Fix: Ensure timer animation is visible regardless of tab visibility
-  // Force a reflow to ensure animation updates
   timerProgress.style.display = 'none';
-  timerProgress.offsetHeight; // Trigger reflow
+  timerProgress.offsetHeight;
   timerProgress.style.display = '';
 }
 
@@ -450,7 +447,8 @@ function connect() {
           lobbyId.value = d.lobbyId;
           currentLobbyId = d.lobbyId;
           isSpectator = d.isSpectator || false;
-          myPlayerName = d.playerName || nickname.value.trim();
+          // Use the server-assigned name (which might have suffix)
+          myPlayerName = d.yourName || d.playerName || nickname.value.trim();
           
           lobbyCodeDisplay.textContent = d.lobbyId;
           
@@ -493,7 +491,15 @@ function connect() {
           
           hasClickedRestart = false;
           spectatorHasClickedRestart = false;
-          spectatorWantsToJoin = false; // Reset when new game starts
+          spectatorWantsToJoin = false;
+          
+          // Update myPlayerName if server sent it (for duplicate names)
+          if (d.playerName) {
+            myPlayerName = d.playerName;
+            if (document.getElementById('playerNameDisplay')) {
+              document.getElementById('playerNameDisplay').textContent = myPlayerName;
+            }
+          }
           
           results.innerHTML = ''; 
           restart.classList.add('hidden');
@@ -527,7 +533,6 @@ function connect() {
           if (d.role === 'spectator') {
             roleBack.className = 'role-back spectator';
             roleText.innerHTML = '<span style="color:#9b59b6">👁️ Spectator</span>';
-            // Spectators see both word and hint
             wordEl.innerHTML = `<div style="margin-bottom: 5px;"><strong>Word:</strong> ${capitalize(d.word)}</div>`;
             if (d.hint) {
               wordEl.innerHTML += `<div><strong>Hint:</strong> ${capitalize(d.hint)}</div>`;
@@ -535,19 +540,15 @@ function connect() {
           } else if (d.role === 'civilian') {
             roleBack.className = `role-back ${d.role}`;
             roleText.innerHTML = '<span style="color:#2ecc71">Civilian</span>';
-            // Civilians only see the word
             wordEl.textContent = `Word: ${capitalize(d.word)}`;
           } else if (d.role === 'impostor') {
             roleBack.className = `role-back ${d.role}`;
             roleText.innerHTML = '<span style="color:#e74c3c">Impostor</span>';
-            // Impostors only see the hint - NOT the word!
             wordEl.textContent = `Hint: ${capitalize(d.word)}`;
-            // Do NOT show the word to impostor
           }
         }
 
         if (d.type === 'turnUpdate') {
-          // Handle empty words from timeouts - show as "(skipped)"
           const formatWord = (entry) => {
             if (entry.word === '' || entry.word === null || entry.word === undefined) {
               return `${entry.name}: (skipped)`;
@@ -566,6 +567,7 @@ function connect() {
             input.value = '';
             input.placeholder = isSpectator ? 'Spectating voting...' : 'Get ready to vote...';
           } else {
+            // Check if it's our turn using the server-assigned name
             const isMyTurn = d.currentPlayer === myPlayerName;
             
             if (isSpectator) {
@@ -598,7 +600,7 @@ function connect() {
           } else {
             voting.innerHTML = '<h3>Vote</h3>' +
               d.players
-                .filter(p => p !== myPlayerName)
+                .filter(p => p !== myPlayerName)  // Use our server-assigned name
                 .map(p => `<button class="vote-btn" onclick="vote('${p}', this)">${p}</button>`)
                 .join('');
           }
@@ -620,11 +622,19 @@ function connect() {
             </div>`;
           }
           
-          const rolesHtml = d.roles.map(r => {
+          // Create two-column layout for roles
+          let rolesHtml = '<div class="results-grid">';
+          d.roles.forEach(r => {
             const roleColor = r.role === 'civilian' ? '#2ecc71' : '#e74c3c';
             const roleName = r.role.charAt(0).toUpperCase() + r.role.slice(1);
-            return `<div style="color:${roleColor}">${r.name}: ${roleName}</div>`;
-          }).join('');
+            rolesHtml += `
+              <div class="results-item" style="color:${roleColor}">
+                <span class="player-name">${r.name}</span>
+                <span class="player-role">${roleName}</span>
+              </div>
+            `;
+          });
+          rolesHtml += '</div>';
           
           results.innerHTML =
             `<h2 style="color:${winnerColor}; text-align:center">${d.winner} Won!</h2>` +
@@ -637,7 +647,6 @@ function connect() {
           
           exitLobbyBtn.style.display = 'block';
           
-          // Show appropriate restart button
           if (!isSpectator) {
             restart.classList.remove('hidden');
             restart.innerText = 'Restart Game';
@@ -660,21 +669,38 @@ function connect() {
           
           const winnerColor = d.winner === 'Civilians' ? '#2ecc71' : '#e74c3c';
           
-          const rolesHtml = d.roles.map(r => {
+          // Create two-column layout for roles
+          let rolesHtml = '<div class="results-grid">';
+          d.roles.forEach(r => {
             const roleColor = r.role === 'civilian' ? '#2ecc71' : '#e74c3c';
             const roleName = r.role.charAt(0).toUpperCase() + r.role.slice(1);
-            return `<div style="color:${roleColor}">${r.name}: ${roleName}</div>`;
-          }).join('');
+            rolesHtml += `
+              <div class="results-item" style="color:${roleColor}">
+                <span class="player-name">${r.name}</span>
+                <span class="player-role">${roleName}</span>
+              </div>
+            `;
+          });
+          rolesHtml += '</div>';
           
-          const votesHtml = Object.entries(d.votes).map(([voter, votedFor]) => {
+          // Create two-column layout for votes
+          let votesHtml = '<div class="results-grid">';
+          Object.entries(d.votes).forEach(([voter, votedFor]) => {
             const voterRole = d.roles.find(r => r.name === voter)?.role;
             const votedForRole = d.roles.find(r => r.name === votedFor)?.role;
             
             const voterColor = voterRole === 'civilian' ? '#2ecc71' : '#e74c3c';
             const votedForColor = votedForRole === 'civilian' ? '#2ecc71' : '#e74c3c';
             
-            return `<div><span style="color:${voterColor}">${voter}</span> voted for -> <span style="color:${votedForColor}">${votedFor}</span></div>`;
-          }).join('');
+            votesHtml += `
+              <div class="results-item">
+                <span class="vote-voter" style="color:${voterColor}">${voter}</span>
+                <div class="vote-arrow">→</div>
+                <span class="vote-voted" style="color:${votedForColor}">${votedFor}</span>
+              </div>
+            `;
+          });
+          votesHtml += '</div>';
           
           results.innerHTML =
             `<h2 style="color:${winnerColor}; text-align:center">${d.winner} Won!</h2>` +
@@ -688,7 +714,6 @@ function connect() {
           
           exitLobbyBtn.style.display = 'block';
           
-          // Show appropriate restart button
           if (!isSpectator) {
             restart.classList.remove('hidden');
             restart.innerText = 'Restart Game';
@@ -707,29 +732,23 @@ function connect() {
         }
 
         if (d.type === 'restartUpdate') {
-          // Handle spectator restart updates
           if (d.isSpectator) {
             if (d.wantsToJoin || d.status === 'joining') {
-              // Spectator has clicked to join
               if (spectatorHasClickedRestart) {
-                // Show waiting state
                 restart.innerText = `Joining next game... (${d.readyCount}/${d.totalPlayers} players ready)`;
                 restart.disabled = true;
                 restart.style.opacity = '0.7';
               } else {
-                // First click - show confirmation
                 restart.innerText = 'Join Next Game';
                 restart.disabled = false;
                 restart.style.opacity = '1';
               }
             } else {
-              // Spectator hasn't clicked yet
               restart.innerText = 'Join Next Game';
               restart.disabled = false;
               restart.style.opacity = '1';
             }
           } else {
-            // Handle player restart updates
             if (hasClickedRestart) {
               restart.innerText = `Waiting for others... (${d.readyCount}/${d.totalPlayers})`;
               restart.disabled = true;
@@ -743,13 +762,12 @@ function connect() {
         }
 
         if (d.type === 'roleChanged') {
-          // Changed: Remove the alert popup
           isSpectator = false;
           spectatorWantsToJoin = false;
           spectatorHasClickedRestart = false;
           nickname.value = nickname.value.replace('👁️ ', '');
           nickname.disabled = false;
-          myPlayerName = nickname.value;
+          // Keep the existing myPlayerName (which already has the suffix if needed)
           
           // Update player name display
           if (document.getElementById('playerNameDisplay')) {
@@ -843,7 +861,6 @@ restart.onclick = () => {
   
   if (isSpectator) {
     if (restart.innerText === 'Join Next Game') {
-      // First click: Join Next Game
       spectatorWantsToJoin = true;
       spectatorHasClickedRestart = true;
       ws.send(JSON.stringify({ type: 'restart' }));
