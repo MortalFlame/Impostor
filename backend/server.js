@@ -475,6 +475,7 @@ wss.on('connection', (ws, req) => {
         
         const lobby = lobbies[lobbyId];
 
+        // NEW: Allow joining during results phase
         if (lobby.phase !== 'lobby' && lobby.phase !== 'results') {
           console.log(`Player ${msg.playerId} joining game in progress`);
           
@@ -511,6 +512,18 @@ wss.on('connection', (ws, req) => {
                   ws.send(JSON.stringify({
                     type: 'startVoting',
                     players: lobby.players.map(p => p.name)
+                  }));
+                } else if (lobby.phase === 'results') {
+                  // Send game end state to reconnecting player
+                  const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
+                  const winner = connectedPlayers.length >= 3 ? 'Game Ended' : 'Game Ended Early';
+                  
+                  ws.send(JSON.stringify({
+                    type: 'gameEnd',
+                    roles: lobby.players.map(p => ({ name: p.name, role: p.role })),
+                    secretWord: lobby.word,
+                    hint: lobby.hint,
+                    winner
                   }));
                 }
               } catch (err) {
@@ -617,6 +630,7 @@ wss.on('connection', (ws, req) => {
       
       if (isSpectator) {
         if (msg.type === 'restart') {
+          // NEW: Only allow spectator to join next game if they haven't already
           if (!player.wantsToJoinNextGame) {
             player.wantsToJoinNextGame = true;
             if (!lobby.spectatorsWantingToJoin.includes(player.id)) {
@@ -788,21 +802,25 @@ wss.on('connection', (ws, req) => {
       }
 
       if (msg.type === 'restart') {
-        if (!isSpectator && !lobby.restartReady.includes(player.id)) {
+        // NEW: Only count players who were in the game (have a role) for restart
+        if (!isSpectator && player.role && !lobby.restartReady.includes(player.id)) {
           lobby.restartReady.push(player.id);
         }
         
         const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
+        const playersInGame = connectedPlayers.filter(p => p.role); // Only players with roles
         
+        // Send restart update to players
         lobby.players.forEach(p => {
           if (p.ws?.readyState === 1) {
             try {
-              p.ws.send(JSON.stringify({
+              ws.send(JSON.stringify({
                 type: 'restartUpdate',
                 readyCount: lobby.restartReady.length,
-                totalPlayers: connectedPlayers.length,
+                totalPlayers: playersInGame.length, // Only count players who were in game
                 spectatorsWantingToJoin: lobby.spectatorsWantingToJoin.length,
-                isSpectator: false
+                isSpectator: false,
+                playerRole: p.role // Include player role in update
               }));
             } catch (err) {
               console.log(`Failed to send restart update to ${p.name}`);
@@ -810,13 +828,14 @@ wss.on('connection', (ws, req) => {
           }
         });
         
+        // Send restart update to spectators
         lobby.spectators.forEach(s => {
           if (s.ws?.readyState === 1) {
             try {
               s.ws.send(JSON.stringify({
                 type: 'restartUpdate',
                 readyCount: lobby.restartReady.length,
-                totalPlayers: connectedPlayers.length,
+                totalPlayers: playersInGame.length,
                 spectatorsWantingToJoin: lobby.spectatorsWantingToJoin.length,
                 isSpectator: true,
                 wantsToJoin: s.wantsToJoinNextGame || false,
@@ -828,7 +847,9 @@ wss.on('connection', (ws, req) => {
           }
         });
         
-        if (lobby.restartReady.length === connectedPlayers.length) {
+        // Check if all connected players with roles are ready
+        if (playersInGame.length > 0 && lobby.restartReady.length === playersInGame.length) {
+          // Move spectators who want to join to players
           const spectatorsToJoin = lobby.spectators.filter(s => 
             s.ws?.readyState === 1 && s.wantsToJoinNextGame
           );
@@ -854,6 +875,7 @@ wss.on('connection', (ws, req) => {
             }
           });
           
+          // Clear the spectators wanting to join list
           lobby.spectatorsWantingToJoin = [];
           startGame(lobby);
         }
@@ -959,6 +981,26 @@ wss.on('connection', (ws, req) => {
       }
     }
 
+    // NEW: If joining during results phase, send game end state
+    if (lobby.phase === 'results') {
+      setTimeout(() => {
+        try {
+          const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
+          const winner = connectedPlayers.length >= 3 ? 'Game Ended' : 'Game Ended Early';
+          
+          ws.send(JSON.stringify({
+            type: 'gameEnd',
+            roles: lobby.players.map(p => ({ name: p.name, role: p.role })),
+            secretWord: lobby.word,
+            hint: lobby.hint,
+            winner
+          }));
+        } catch (err) {
+          console.log(`Error sending game state to new player ${player.name}`);
+        }
+      }, 100);
+    }
+
     ws.send(JSON.stringify({ 
       type: 'lobbyAssigned', 
       lobbyId,
@@ -1029,6 +1071,26 @@ wss.on('connection', (ws, req) => {
         };
         lobby.spectators.push(player);
       }
+    }
+
+    // NEW: If joining during results phase, send game end state
+    if (lobby.phase === 'results') {
+      setTimeout(() => {
+        try {
+          const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
+          const winner = connectedPlayers.length >= 3 ? 'Game Ended' : 'Game Ended Early';
+          
+          ws.send(JSON.stringify({
+            type: 'gameEnd',
+            roles: lobby.players.map(p => ({ name: p.name, role: p.role })),
+            secretWord: lobby.word,
+            hint: lobby.hint,
+            winner
+          }));
+        } catch (err) {
+          console.log(`Error sending game state to new spectator ${player.name}`);
+        }
+      }, 100);
     }
 
     ws.send(JSON.stringify({ 
