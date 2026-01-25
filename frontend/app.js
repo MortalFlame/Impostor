@@ -617,6 +617,9 @@ function connect() {
             </div>`;
           }
           
+          // Check if we have a role (were in the game)
+          const myRoleInfo = d.roles.find(r => r.name === myPlayerName);
+          
           let rolesHtml = '<div class="results-grid">';
           d.roles.forEach(r => {
             const roleColor = r.role === 'civilian' ? '#2ecc71' : '#e74c3c';
@@ -641,18 +644,34 @@ function connect() {
           
           exitLobbyBtn.style.display = 'block';
           
-          if (!isSpectator) {
+          // NEW: Handle restart button state based on spectator status and role
+          if (isSpectator) {
+            restart.classList.remove('hidden');
+            if (spectatorWantsToJoin) {
+              // Spectator has already clicked to join next game
+              restart.innerText = 'Joining next game...';
+              restart.disabled = true;
+              restart.style.opacity = '0.7';
+            } else {
+              restart.innerText = 'Join Next Game';
+              restart.disabled = false;
+              restart.style.opacity = '1';
+            }
+            spectatorHasClickedRestart = false;
+          } else if (myRoleInfo) {
+            // Player was in the game
             restart.classList.remove('hidden');
             restart.innerText = 'Restart Game';
             restart.disabled = false;
             restart.style.opacity = '1';
             hasClickedRestart = false;
           } else {
+            // New player (joined during results)
             restart.classList.remove('hidden');
             restart.innerText = 'Join Next Game';
             restart.disabled = false;
             restart.style.opacity = '1';
-            spectatorHasClickedRestart = false;
+            hasClickedRestart = false;
           }
           
           turnEl.textContent = 'Game Ended Early';
@@ -662,6 +681,9 @@ function connect() {
           stopTurnTimer();
           
           const winnerColor = d.winner === 'Civilians' ? '#2ecc71' : '#e74c3c';
+          
+          // Check if we have a role (were in the game)
+          const myRoleInfo = d.roles.find(r => r.name === myPlayerName);
           
           let rolesHtml = '<div class="results-grid">';
           d.roles.forEach(r => {
@@ -677,21 +699,23 @@ function connect() {
           rolesHtml += '</div>';
           
           let votesHtml = '<div class="results-grid">';
-          Object.entries(d.votes).forEach(([voter, votedFor]) => {
-            const voterRole = d.roles.find(r => r.name === voter)?.role;
-            const votedForRole = d.roles.find(r => r.name === votedFor)?.role;
-            
-            const voterColor = voterRole === 'civilian' ? '#2ecc71' : '#e74c3c';
-            const votedForColor = votedForRole === 'civilian' ? '#2ecc71' : '#e74c3c';
-            
-            votesHtml += `
-              <div class="vote-results-item">
-                <span class="vote-voter" style="color:${voterColor}">${voter}</span>
-                <div class="vote-arrow">→</div>
-                <span class="vote-voted" style="color:${votedForColor}">${votedFor}</span>
-              </div>
-            `;
-          });
+          if (d.votes) {
+            Object.entries(d.votes).forEach(([voter, votedFor]) => {
+              const voterRole = d.roles.find(r => r.name === voter)?.role;
+              const votedForRole = d.roles.find(r => r.name === votedFor)?.role;
+              
+              const voterColor = voterRole === 'civilian' ? '#2ecc71' : '#e74c3c';
+              const votedForColor = votedForRole === 'civilian' ? '#2ecc71' : '#e74c3c';
+              
+              votesHtml += `
+                <div class="vote-results-item">
+                  <span class="vote-voter" style="color:${voterColor}">${voter}</span>
+                  <div class="vote-arrow">→</div>
+                  <span class="vote-voted" style="color:${votedForColor}">${votedFor}</span>
+                </div>
+              `;
+            });
+          }
           votesHtml += '</div>';
           
           results.innerHTML =
@@ -699,25 +723,41 @@ function connect() {
             `<div><b>Word:</b> ${capitalize(d.secretWord)}</div>` +
             `<div><b>Hint:</b> ${capitalize(d.hint)}</div><hr>` +
             '<b>Roles</b><br>' + rolesHtml +
-            '<hr><b>Votes</b><br>' + votesHtml +
+            (d.votes ? '<hr><b>Votes</b><br>' + votesHtml : '') +
             '<br><br>';
 
           voting.innerHTML = '';
           
           exitLobbyBtn.style.display = 'block';
           
-          if (!isSpectator) {
+          // NEW: Handle restart button state based on spectator status and role
+          if (isSpectator) {
+            restart.classList.remove('hidden');
+            if (spectatorWantsToJoin) {
+              // Spectator has already clicked to join next game
+              restart.innerText = 'Joining next game...';
+              restart.disabled = true;
+              restart.style.opacity = '0.7';
+            } else {
+              restart.innerText = 'Join Next Game';
+              restart.disabled = false;
+              restart.style.opacity = '1';
+            }
+            spectatorHasClickedRestart = false;
+          } else if (myRoleInfo) {
+            // Player was in the game
             restart.classList.remove('hidden');
             restart.innerText = 'Restart Game';
             restart.disabled = false;
             restart.style.opacity = '1';
             hasClickedRestart = false;
           } else {
+            // New player (joined during results)
             restart.classList.remove('hidden');
             restart.innerText = 'Join Next Game';
             restart.disabled = false;
             restart.style.opacity = '1';
-            spectatorHasClickedRestart = false;
+            hasClickedRestart = false;
           }
           
           turnEl.textContent = isSpectator ? 'Spectating - Game Over' : 'Game Over - Results';
@@ -741,12 +781,21 @@ function connect() {
               restart.style.opacity = '1';
             }
           } else {
-            if (hasClickedRestart) {
-              restart.innerText = `Waiting for others... (${d.readyCount}/${d.totalPlayers})`;
-              restart.disabled = true;
-              restart.style.opacity = '0.7';
+            // Check if player has a role (was in the game)
+            if (d.playerRole) {
+              // Player was in the game
+              if (hasClickedRestart) {
+                restart.innerText = `Waiting for others... (${d.readyCount}/${d.totalPlayers})`;
+                restart.disabled = true;
+                restart.style.opacity = '0.7';
+              } else {
+                restart.innerText = 'Restart Game';
+                restart.disabled = false;
+                restart.style.opacity = '1';
+              }
             } else {
-              restart.innerText = 'Restart Game';
+              // New player (joined during results)
+              restart.innerText = 'Join Next Game';
               restart.disabled = false;
               restart.style.opacity = '1';
             }
@@ -858,11 +907,22 @@ restart.onclick = () => {
       restart.style.opacity = '0.7';
     }
   } else {
-    hasClickedRestart = true;
-    ws.send(JSON.stringify({ type: 'restart' }));
-    restart.innerText = 'Waiting for others...';
-    restart.disabled = true;
-    restart.style.opacity = '0.7';
+    // Check if we should show "Join Next Game" (for new players) or "Restart Game" (for players in game)
+    if (restart.innerText === 'Join Next Game') {
+      // New player joining during results
+      hasClickedRestart = true;
+      ws.send(JSON.stringify({ type: 'restart' }));
+      restart.innerText = 'Joining next game...';
+      restart.disabled = true;
+      restart.style.opacity = '0.7';
+    } else if (restart.innerText === 'Restart Game') {
+      // Player was in the game
+      hasClickedRestart = true;
+      ws.send(JSON.stringify({ type: 'restart' }));
+      restart.innerText = 'Waiting for others...';
+      restart.disabled = true;
+      restart.style.opacity = '0.7';
+    }
   }
 };
 
