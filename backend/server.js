@@ -475,7 +475,7 @@ wss.on('connection', (ws, req) => {
         
         const lobby = lobbies[lobbyId];
 
-        // NEW: Allow joining during results phase
+        // Allow joining during results phase
         if (lobby.phase !== 'lobby' && lobby.phase !== 'results') {
           console.log(`Player ${msg.playerId} joining game in progress`);
           
@@ -630,26 +630,15 @@ wss.on('connection', (ws, req) => {
       
       if (isSpectator) {
         if (msg.type === 'restart') {
-          // NEW: Only allow spectator to join next game if they haven't already
+          // Only allow spectator to join next game if they haven't already
           if (!player.wantsToJoinNextGame) {
             player.wantsToJoinNextGame = true;
             if (!lobby.spectatorsWantingToJoin.includes(player.id)) {
               lobby.spectatorsWantingToJoin.push(player.id);
             }
             
-            try {
-              ws.send(JSON.stringify({
-                type: 'restartUpdate',
-                readyCount: lobby.restartReady.length,
-                totalPlayers: lobby.players.filter(p => p.ws?.readyState === 1).length,
-                spectatorsWantingToJoin: lobby.spectatorsWantingToJoin.length,
-                isSpectator: true,
-                wantsToJoin: true,
-                status: 'joining'
-              }));
-            } catch (err) {
-              console.log(`Failed to send restart update to spectator ${player.name}`);
-            }
+            // Send restart update to all players and spectators
+            sendRestartUpdates(lobby);
           }
         }
         return;
@@ -802,50 +791,16 @@ wss.on('connection', (ws, req) => {
       }
 
       if (msg.type === 'restart') {
-        // NEW: Only count players who were in the game (have a role) for restart
+        // Only count players who were in the game (have a role) for restart
         if (!isSpectator && player.role && !lobby.restartReady.includes(player.id)) {
           lobby.restartReady.push(player.id);
         }
         
+        // Send restart updates to all
+        sendRestartUpdates(lobby);
+        
         const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
-        const playersInGame = connectedPlayers.filter(p => p.role); // Only players with roles
-        
-        // Send restart update to players
-        lobby.players.forEach(p => {
-          if (p.ws?.readyState === 1) {
-            try {
-              ws.send(JSON.stringify({
-                type: 'restartUpdate',
-                readyCount: lobby.restartReady.length,
-                totalPlayers: playersInGame.length, // Only count players who were in game
-                spectatorsWantingToJoin: lobby.spectatorsWantingToJoin.length,
-                isSpectator: false,
-                playerRole: p.role // Include player role in update
-              }));
-            } catch (err) {
-              console.log(`Failed to send restart update to ${p.name}`);
-            }
-          }
-        });
-        
-        // Send restart update to spectators
-        lobby.spectators.forEach(s => {
-          if (s.ws?.readyState === 1) {
-            try {
-              s.ws.send(JSON.stringify({
-                type: 'restartUpdate',
-                readyCount: lobby.restartReady.length,
-                totalPlayers: playersInGame.length,
-                spectatorsWantingToJoin: lobby.spectatorsWantingToJoin.length,
-                isSpectator: true,
-                wantsToJoin: s.wantsToJoinNextGame || false,
-                status: s.wantsToJoinNextGame ? 'joining' : 'waiting'
-              }));
-            } catch (err) {
-              console.log(`Failed to send restart update to spectator ${s.name}`);
-            }
-          }
-        });
+        const playersInGame = connectedPlayers.filter(p => p.role);
         
         // Check if all connected players with roles are ready
         if (playersInGame.length > 0 && lobby.restartReady.length === playersInGame.length) {
@@ -981,7 +936,7 @@ wss.on('connection', (ws, req) => {
       }
     }
 
-    // NEW: If joining during results phase, send game end state
+    // If joining during results phase, send game end state
     if (lobby.phase === 'results') {
       setTimeout(() => {
         try {
@@ -1073,7 +1028,7 @@ wss.on('connection', (ws, req) => {
       }
     }
 
-    // NEW: If joining during results phase, send game end state
+    // If joining during results phase, send game end state
     if (lobby.phase === 'results') {
       setTimeout(() => {
         try {
@@ -1155,5 +1110,47 @@ wss.on('connection', (ws, req) => {
         }
       }, 100);
     }
+  }
+
+  function sendRestartUpdates(lobby) {
+    const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
+    const playersInGame = connectedPlayers.filter(p => p.role);
+    
+    // Send restart update to players
+    lobby.players.forEach(p => {
+      if (p.ws?.readyState === 1) {
+        try {
+          p.ws.send(JSON.stringify({
+            type: 'restartUpdate',
+            readyCount: lobby.restartReady.length,
+            totalPlayers: playersInGame.length,
+            spectatorsWantingToJoin: lobby.spectatorsWantingToJoin.length,
+            isSpectator: false,
+            playerRole: p.role // Send player's role
+          }));
+        } catch (err) {
+          console.log(`Failed to send restart update to ${p.name}`);
+        }
+      }
+    });
+    
+    // Send restart update to spectators
+    lobby.spectators.forEach(s => {
+      if (s.ws?.readyState === 1) {
+        try {
+          s.ws.send(JSON.stringify({
+            type: 'restartUpdate',
+            readyCount: lobby.restartReady.length,
+            totalPlayers: playersInGame.length,
+            spectatorsWantingToJoin: lobby.spectatorsWantingToJoin.length,
+            isSpectator: true,
+            wantsToJoin: s.wantsToJoinNextGame || false,
+            status: s.wantsToJoinNextGame ? 'joining' : 'waiting'
+          }));
+        } catch (err) {
+          console.log(`Failed to send restart update to spectator ${s.name}`);
+        }
+      }
+    });
   }
 });
