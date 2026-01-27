@@ -59,6 +59,9 @@ let connectionLatency = 0;
 let connectionStable = true;
 let connectionState = 'disconnected';
 
+// NEW: Server restart detection
+let lastServerId = localStorage.getItem('lastServerId');
+
 const DEBUG_MODE = false;
 
 function safeLog(...args) {
@@ -321,8 +324,15 @@ function resetToLobbyScreen() {
   }
 }
 
-function joinAsPlayer() {
+function joinAsPlayer(isReconnect = false) {
   if (isReconnecting) return;
+  
+  // NEW: Only validate nickname for fresh joins, not reconnects
+  if (!isReconnect && !nickname.value.trim()) {
+    alert('Please enter a nickname');
+    return;
+  }
+  
   isSpectator = false;
   spectatorWantsToJoin = false;
   spectatorHasClickedRestart = false;
@@ -351,7 +361,7 @@ function connect() {
     return;
   }
 
-  if (!nickname.value.trim()) {
+  if (!nickname.value.trim() && joinType !== 'joinLobby') {
     alert('Please enter a nickname');
     return;
   }
@@ -419,6 +429,29 @@ function connect() {
         const d = JSON.parse(e.data);
         safeLog('Game update received:', d.type);
 
+        if (d.type === 'serverHello') {
+          // NEW: Server restart detection
+          if (lastServerId && lastServerId !== d.serverId) {
+            showConnectionWarning('Server was restarted. Reconnecting...');
+            lastServerId = d.serverId;
+            localStorage.setItem('lastServerId', d.serverId);
+            // Force a fresh reconnection
+            if (currentLobbyId) {
+              setTimeout(() => {
+                if (isSpectator) {
+                  joinAsSpectator();
+                } else {
+                  joinAsPlayer(true); // Pass true for reconnect
+                }
+              }, 1000);
+            }
+            return;
+          }
+          lastServerId = d.serverId;
+          localStorage.setItem('lastServerId', d.serverId);
+          return;
+        }
+
         if (d.type === 'pong') {
           connectionLatency = Date.now() - lastPingTime;
           connectionStable = connectionLatency < 1000;
@@ -476,14 +509,11 @@ function connect() {
             players.innerHTML += `<br><i style="color:#f39c12">Game in progress: ${d.phase}</i>`;
           }
           
-          // Show message for spectators
           if (isSpectator && (d.phase === 'lobby' || d.phase === 'results')) {
             players.innerHTML += `<br><i style="color:#9b59b6">Click "Join Next Game" to play next round</i>`;
           }
           
-          // Show message for new players joining during results
           if (d.phase === 'results' && !isSpectator) {
-            // Check if this player has a role (was in the game)
             const myPlayerInfo = d.players.find(p => p.name === myPlayerName);
             if (!myPlayerInfo || !myPlayerInfo.role) {
               players.innerHTML += `<br><i style="color:#f39c12">Joining next game...</i>`;
@@ -627,7 +657,6 @@ function connect() {
             </div>`;
           }
           
-          // Check if we have a role (were in the game)
           const myRoleInfo = d.roles.find(r => r.name === myPlayerName);
           
           let rolesHtml = '<div class="results-grid">';
@@ -654,11 +683,9 @@ function connect() {
           
           exitLobbyBtn.style.display = 'block';
           
-          // Handle restart button state based on spectator status and role
           if (isSpectator) {
             restart.classList.remove('hidden');
             if (spectatorWantsToJoin) {
-              // Spectator has already clicked to join next game
               restart.innerText = 'Joining next game...';
               restart.disabled = true;
               restart.style.opacity = '0.7';
@@ -669,14 +696,12 @@ function connect() {
             }
             spectatorHasClickedRestart = false;
           } else if (myRoleInfo) {
-            // Player was in the game - ALWAYS show "Restart Game"
             restart.classList.remove('hidden');
             restart.innerText = 'Restart Game';
             restart.disabled = false;
             restart.style.opacity = '1';
             hasClickedRestart = false;
           } else {
-            // New player (joined during results)
             restart.classList.remove('hidden');
             restart.innerText = 'Join Next Game';
             restart.disabled = false;
@@ -692,7 +717,6 @@ function connect() {
           
           const winnerColor = d.winner === 'Civilians' ? '#2ecc71' : '#e74c3c';
           
-          // Check if we have a role (were in the game)
           const myRoleInfo = d.roles.find(r => r.name === myPlayerName);
           
           let rolesHtml = '<div class="results-grid">';
@@ -740,11 +764,9 @@ function connect() {
           
           exitLobbyBtn.style.display = 'block';
           
-          // Handle restart button state based on spectator status and role
           if (isSpectator) {
             restart.classList.remove('hidden');
             if (spectatorWantsToJoin) {
-              // Spectator has already clicked to join next game
               restart.innerText = 'Joining next game...';
               restart.disabled = true;
               restart.style.opacity = '0.7';
@@ -755,14 +777,12 @@ function connect() {
             }
             spectatorHasClickedRestart = false;
           } else if (myRoleInfo) {
-            // Player was in the game - ALWAYS show "Restart Game"
             restart.classList.remove('hidden');
             restart.innerText = 'Restart Game';
             restart.disabled = false;
             restart.style.opacity = '1';
             hasClickedRestart = false;
           } else {
-            // New player (joined during results)
             restart.classList.remove('hidden');
             restart.innerText = 'Join Next Game';
             restart.disabled = false;
@@ -791,9 +811,7 @@ function connect() {
               restart.style.opacity = '1';
             }
           } else {
-            // Player restart update
             if (d.playerRole) {
-              // Player was in the game
               if (hasClickedRestart) {
                 restart.innerText = `Waiting for others... (${d.readyCount}/${d.totalPlayers})`;
                 restart.disabled = true;
@@ -804,7 +822,6 @@ function connect() {
                 restart.style.opacity = '1';
               }
             } else {
-              // New player (joined during results)
               if (hasClickedRestart) {
                 restart.innerText = `Joining next game... (${d.readyCount}/${d.totalPlayers} players ready)`;
                 restart.disabled = true;
@@ -871,11 +888,15 @@ function connect() {
         if (isSpectator && currentLobbyId) {
           joinAsSpectator();
         } else if (currentLobbyId) {
-          joinAsPlayer();
+          joinAsPlayer(true); // Pass true for reconnect
         } else {
           resetToLobbyScreen();
         }
-        reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
+        // NEW: Better reconnection backoff with jitter
+        reconnectDelay = Math.min(
+          30000,
+          reconnectDelay * 1.5 + Math.random() * 1000
+        );
       }, reconnectDelay);
     };
   } catch (error) {
@@ -885,7 +906,7 @@ function connect() {
   }
 }
 
-join.onclick = joinAsPlayer;
+join.onclick = () => joinAsPlayer(false);
 spectate.onclick = joinAsSpectator;
 exitLobbyBtn.onclick = exitLobby;
 
@@ -924,14 +945,12 @@ restart.onclick = () => {
     }
   } else {
     if (restart.innerText === 'Join Next Game') {
-      // New player joining during results
       hasClickedRestart = true;
       ws.send(JSON.stringify({ type: 'restart' }));
       restart.innerText = 'Joining next game...';
       restart.disabled = true;
       restart.style.opacity = '0.7';
     } else if (restart.innerText === 'Restart Game') {
-      // Player was in the game
       hasClickedRestart = true;
       ws.send(JSON.stringify({ type: 'restart' }));
       restart.innerText = 'Waiting for others...';
@@ -963,11 +982,11 @@ window.vote = (v, btnElement) => {
 };
 
 nickname.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') joinAsPlayer();
+  if (e.key === 'Enter') joinAsPlayer(false);
 });
 
 lobbyId.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') joinAsPlayer();
+  if (e.key === 'Enter') joinAsPlayer(false);
 });
 
 input.addEventListener('keypress', (e) => {
@@ -1008,7 +1027,7 @@ document.addEventListener('visibilitychange', () => {
           if (isSpectator && currentLobbyId) {
             joinAsSpectator();
           } else if (currentLobbyId) {
-            joinAsPlayer();
+            joinAsPlayer(true);
           }
         }, 500);
       } else if (ws && ws.readyState === WebSocket.OPEN) {
@@ -1020,7 +1039,7 @@ document.addEventListener('visibilitychange', () => {
             if (isSpectator && currentLobbyId) {
               joinAsSpectator();
             } else if (currentLobbyId) {
-              joinAsPlayer();
+              joinAsPlayer(true);
             }
           }, 500);
         }
