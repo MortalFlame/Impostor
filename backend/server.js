@@ -50,11 +50,9 @@ function makeNameUnique(baseName, existingNames, id) {
   return newName;
 }
 
-// UPDATED: replaceSocket with nulled event handlers
 function replaceSocket(player, newWs) {
   if (player.ws && player.ws !== newWs && player.ws.readyState === 1) {
     try {
-      // Null out event handlers for belt-and-suspenders safety
       player.ws.onmessage = null;
       player.ws.onclose = null;
       player.ws.onerror = null;
@@ -97,18 +95,40 @@ function checkGameEndConditions(lobby, lobbyId) {
   
   const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
   
+  // UPDATED: 30-second grace period for low player count
   if (connectedPlayers.length < 3) {
-    console.log(`Game in lobby ${lobbyId} ending: less than 3 players connected (${connectedPlayers.length})`);
-    endGameEarly(lobby, 'not_enough_players');
-    return true;
+    const now = Date.now();
+    
+    // If we just dropped below 3, record the time
+    if (!lobby.lastTimeBelowThreePlayers) {
+      lobby.lastTimeBelowThreePlayers = now;
+      console.log(`Game in lobby ${lobbyId} now has ${connectedPlayers.length} players, starting 30s grace period`);
+      return false;
+    }
+    
+    // Check if we've been below 3 players for more than 30 seconds
+    if (now - lobby.lastTimeBelowThreePlayers > 30000) {
+      console.log(`Game in lobby ${lobbyId} ending: less than 3 players for 30+ seconds (${connectedPlayers.length})`);
+      endGameEarly(lobby, 'not_enough_players');
+      return true;
+    }
+    
+    // Still within grace period
+    const secondsRemaining = Math.ceil((30000 - (now - lobby.lastTimeBelowThreePlayers)) / 1000);
+    console.log(`Game in lobby ${lobbyId} has ${connectedPlayers.length} players, ${secondsRemaining}s remaining`);
+    return false;
+  } else {
+    // We have 3+ players, reset the timer
+    lobby.lastTimeBelowThreePlayers = null;
   }
   
   if (lobby.phase === 'round1' || lobby.phase === 'round2') {
     const impostor = lobby.players.find(p => p.role === 'impostor');
+    // UPDATED: 30-second grace period for impostor disconnect
     if (impostor && impostor.ws?.readyState !== 1) {
       const now = Date.now();
-      if (impostor.lastDisconnectTime && (now - impostor.lastDisconnectTime > 15000)) {
-        console.log(`Game in lobby ${lobbyId} ending: impostor left for >15s`);
+      if (impostor.lastDisconnectTime && (now - impostor.lastDisconnectTime > 30000)) {
+        console.log(`Game in lobby ${lobbyId} ending: impostor left for >30s`);
         endGameEarly(lobby, 'impostor_left');
         return true;
       }
@@ -139,6 +159,7 @@ function endGameEarly(lobby, reason) {
   lobby.phase = 'results';
   lobby.restartReady = [];
   lobby.spectatorsWantingToJoin = [];
+  lobby.lastTimeBelowThreePlayers = null; // Reset grace period timer
 }
 
 function startGame(lobby) {
@@ -155,6 +176,7 @@ function startGame(lobby) {
   lobby.restartReady = [];
   lobby.spectatorsWantingToJoin = [];
   lobby.turnTimeout = null;
+  lobby.lastTimeBelowThreePlayers = null; // Reset grace period timer
 
   lobby.spectators.forEach(s => s.vote = '');
 
@@ -210,15 +232,11 @@ function startGame(lobby) {
   lobby.turn = firstConnectedIndex;
   
   startTurnTimer(lobby);
-  
-  broadcast(lobby, {
-    type: 'turnUpdate',
-    phase: lobby.phase,
-    round1: [],
-    round2: [],
-    currentPlayer: lobby.players[lobby.turn]?.name || 'Unknown',
-    timeRemaining: 30
-  });
+}
+
+// NEW: Calculate turn end time for consistent timing
+function getTurnEndTime() {
+  return Date.now() + 30000; // 30 seconds from now
 }
 
 function startTurnTimer(lobby) {
@@ -231,6 +249,9 @@ function startTurnTimer(lobby) {
   
   const currentPlayer = lobby.players[lobby.turn];
   if (!currentPlayer) return;
+  
+  // Calculate turn end time
+  const turnEndsAt = getTurnEndTime();
   
   lobby.turnTimeout = {
     playerId: currentPlayer.id,
@@ -247,6 +268,17 @@ function startTurnTimer(lobby) {
       }
     }, 30000)
   };
+  
+  // UPDATED: Send turn end timestamp to clients
+  broadcast(lobby, {
+    type: 'turnUpdate',
+    phase: lobby.phase,
+    round1: lobby.round1,
+    round2: lobby.round2,
+    currentPlayer: currentPlayer.name,
+    timeRemaining: 30,
+    turnEndsAt: turnEndsAt  // NEW: Absolute end time for client timers
+  });
 }
 
 function skipCurrentPlayer(lobby, isTimeout = false) {
@@ -270,7 +302,8 @@ function skipCurrentPlayer(lobby, isTimeout = false) {
       round2: lobby.round2,
       currentPlayer: currentPlayer.name,
       timeRemaining: 30,
-      timeoutOccurred: true
+      timeoutOccurred: true,
+      turnEndsAt: getTurnEndTime() // NEW: Send new turn end time
     });
   }
   
@@ -310,7 +343,8 @@ function skipCurrentPlayer(lobby, isTimeout = false) {
         round1: lobby.round1,
         round2: lobby.round2,
         currentPlayer: lobby.players[lobby.turn]?.name || 'Unknown',
-        timeRemaining: 30
+        timeRemaining: 30,
+        turnEndsAt: getTurnEndTime() // NEW: Send turn end time for next round
       });
       
       startTurnTimer(lobby);
@@ -343,15 +377,6 @@ function skipCurrentPlayer(lobby, isTimeout = false) {
   }
   
   startTurnTimer(lobby);
-  
-  broadcast(lobby, {
-    type: 'turnUpdate',
-    phase: lobby.phase,
-    round1: lobby.round1,
-    round2: lobby.round2,
-    currentPlayer: lobby.players[lobby.turn]?.name || 'Unknown',
-    timeRemaining: 30
-  });
 }
 
 function cleanupLobby(lobby, lobbyId) {
@@ -489,7 +514,7 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
-      // NEW: Epoch check for all messages after player is established
+      // Epoch check for all messages after player is established
       if (player && ws.connectionEpoch !== player.connectionEpoch) {
         console.log(`Ignoring message from stale socket for player ${player.name}`);
         return;
@@ -507,7 +532,8 @@ wss.on('connection', (ws, req) => {
             createdAt: Date.now(),
             turnTimeout: null,
             restartReady: [],
-            spectatorsWantingToJoin: []
+            spectatorsWantingToJoin: [],
+            lastTimeBelowThreePlayers: null // NEW: Initialize grace period tracker
           }; 
           console.log(`Created new lobby: ${lobbyId}`);
         }
@@ -538,16 +564,26 @@ wss.on('connection', (ws, req) => {
                 }));
                 
                 if (lobby.phase === 'round1' || lobby.phase === 'round2') {
-                  ws.send(JSON.stringify({
-                    type: 'turnUpdate',
-                    phase: lobby.phase,
-                    round1: lobby.round1,
-                    round2: lobby.round2,
-                    currentPlayer: lobby.players[lobby.turn]?.name || 'Unknown'
-                  }));
-                  
-                  if (lobby.players[lobby.turn]?.id === player.id) {
-                    startTurnTimer(lobby);
+                  // Get current turn info
+                  const currentPlayer = lobby.players[lobby.turn];
+                  if (currentPlayer) {
+                    // Calculate remaining time for this turn
+                    const turnEndsAt = lobby.turnTimeout?.playerId === currentPlayer.id ? 
+                      getTurnEndTime() - (30000 - (Date.now() - (lobby.turnStartTime || Date.now()))) :
+                      getTurnEndTime();
+                    
+                    ws.send(JSON.stringify({
+                      type: 'turnUpdate',
+                      phase: lobby.phase,
+                      round1: lobby.round1,
+                      round2: lobby.round2,
+                      currentPlayer: currentPlayer.name,
+                      turnEndsAt: turnEndsAt
+                    }));
+                    
+                    if (currentPlayer.id === player.id) {
+                      startTurnTimer(lobby);
+                    }
                   }
                 } else if (lobby.phase === 'voting') {
                   ws.send(JSON.stringify({
@@ -731,7 +767,8 @@ wss.on('connection', (ws, req) => {
             round1: lobby.round1,
             round2: lobby.round2,
             currentPlayer: lobby.players[lobby.turn]?.name || 'Unknown',
-            timeRemaining: 30
+            timeRemaining: 30,
+            turnEndsAt: getTurnEndTime()
           });
           
           startTurnTimer(lobby);
@@ -768,15 +805,6 @@ wss.on('connection', (ws, req) => {
         }
         
         startTurnTimer(lobby);
-
-        broadcast(lobby, {
-          type: 'turnUpdate',
-          phase: lobby.phase,
-          round1: lobby.round1,
-          round2: lobby.round2,
-          currentPlayer: lobby.players[lobby.turn]?.name || 'Unknown',
-          timeRemaining: 30
-        });
       }
 
       if (msg.type === 'vote') {
@@ -820,6 +848,7 @@ wss.on('connection', (ws, req) => {
           lobby.phase = 'results';
           lobby.restartReady = [];
           lobby.spectatorsWantingToJoin = [];
+          lobby.lastTimeBelowThreePlayers = null;
           
           if (lobby.turnTimeout?.timer) {
             clearTimeout(lobby.turnTimeout.timer);
@@ -903,7 +932,6 @@ wss.on('connection', (ws, req) => {
           lobby.players[lobby.turn]?.id === player.id) {
         
         setTimeout(() => {
-          // UPDATED: Clear turnTimeout before skipping, and add additional validation
           if (player.ws?.readyState !== 1 && 
               lobby.phase !== 'voting' && 
               lobby.phase !== 'results' &&
@@ -1148,14 +1176,21 @@ wss.on('connection', (ws, req) => {
           }));
           
           if (lobby.phase === 'round1' || lobby.phase === 'round2') {
-            ws.send(JSON.stringify({
-              type: 'turnUpdate',
-              phase: lobby.phase,
-              round1: lobby.round1,
-              round2: lobby.round2,
-              currentPlayer: lobby.players[lobby.turn]?.name || 'Unknown',
-              isSpectator: roleToSend === 'spectator'
-            }));
+            // Get current turn info with turnEndsAt
+            const currentPlayer = lobby.players[lobby.turn];
+            if (currentPlayer) {
+              const turnEndsAt = getTurnEndTime();
+              
+              ws.send(JSON.stringify({
+                type: 'turnUpdate',
+                phase: lobby.phase,
+                round1: lobby.round1,
+                round2: lobby.round2,
+                currentPlayer: currentPlayer.name,
+                turnEndsAt: turnEndsAt,
+                isSpectator: roleToSend === 'spectator'
+              }));
+            }
           } else if (lobby.phase === 'voting') {
             ws.send(JSON.stringify({
               type: 'startVoting',
