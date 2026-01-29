@@ -99,6 +99,50 @@ body {
   animation: blink 1.5s infinite;
 }
 
+/* New button row styling */
+.button-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.join-btn {
+  flex: 3; /* 75% */
+  min-width: 0;
+}
+
+.spectate-btn {
+  flex: 1; /* 25% */
+  min-width: 0;
+  font-size: 20px;
+  padding: 14px 5px;
+}
+
+/* Exit lobby button styling */
+.exit-lobby-btn {
+  background: linear-gradient(135deg, #e74c3c, #c0392b);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 60px;
+  height: 30px;
+  margin: 0;
+}
+
+.exit-lobby-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ff4d4d, #e74c3c);
+  box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
+}
+
+.exit-lobby-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
 .player-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -451,6 +495,30 @@ button:disabled { opacity: 0.4; }
   display: flex;
   align-items: center;
   overflow: hidden;
+}
+
+/* Results screen word and hint on same line */
+.word-hint-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+  padding: 8px;
+  background: rgba(13, 17, 28, 0.4);
+  border-radius: 8px;
+  border-left: 4px solid #6a8bff;
+}
+
+.word-hint-container div {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.word-hint-separator {
+  color: #95a5a6;
+  font-weight: bold;
+  margin: 0 5px;
 }
 
 /* Roles section - align role text */
