@@ -16,25 +16,69 @@ const wss = new WebSocketServer({
   clientTracking: true
 });
 
-const wordsData = JSON.parse(fs.readFileSync(__dirname + '/words.json', 'utf8'));
+const words = JSON.parse(fs.readFileSync(__dirname + '/words.json', 'utf8'));
 
 let lobbies = {};
 const SERVER_ID = crypto.randomUUID();
 
-// FIXED: Better word randomization using Fisher-Yates shuffle
+// FIXED: True random word selection with no repeats until all used
 function getRandomWord(lobby) {
   if (!lobby.availableWords || lobby.availableWords.length === 0) {
-    // Shuffle all words using Fisher-Yates algorithm
-    lobby.availableWords = [...wordsData];
+    // Start with a fresh copy of all words
+    lobby.availableWords = [...words];
+    lobby.usedWords = [];
+    
+    // Initial shuffle using Fisher-Yates algorithm
     for (let i = lobby.availableWords.length - 1; i > 0; i--) {
       const j = crypto.randomInt(i + 1);
       [lobby.availableWords[i], lobby.availableWords[j]] = [lobby.availableWords[j], lobby.availableWords[i]];
     }
-    console.log(`Shuffled ${lobby.availableWords.length} words for lobby ${Object.keys(lobbies).find(k => lobbies[k] === lobby)}`);
+    
+    console.log(`Initialized word pool for lobby: ${lobby.availableWords.length} words`);
   }
   
-  // Take the first word from the shuffled array
-  return lobby.availableWords.shift();
+  // If we're running low on available words, mix in some used ones
+  if (lobby.availableWords.length < 3 && lobby.usedWords.length > 0) {
+    console.log(`Low on words (${lobby.availableWords.length} left), adding back ${Math.ceil(lobby.usedWords.length / 2)} used words`);
+    
+    // Add back half of the used words (random selection)
+    const wordsToReadd = [];
+    const usedCopy = [...lobby.usedWords];
+    
+    // Randomly select about half of the used words to put back
+    const numToReadd = Math.ceil(lobby.usedWords.length / 2);
+    for (let i = 0; i < numToReadd && usedCopy.length > 0; i++) {
+      const randomIndex = crypto.randomInt(usedCopy.length);
+      wordsToReadd.push(usedCopy.splice(randomIndex, 1)[0]);
+    }
+    
+    lobby.availableWords.push(...wordsToReadd);
+    
+    // Remove the readded words from usedWords
+    lobby.usedWords = lobby.usedWords.filter(wordObj => 
+      !wordsToReadd.some(w => w.word === wordObj.word)
+    );
+    
+    // Shuffle the newly expanded pool
+    const combined = [...lobby.availableWords];
+    for (let i = combined.length - 1; i > 0; i--) {
+      const j = crypto.randomInt(i + 1);
+      [combined[i], combined[j]] = [combined[j], combined[i]];
+    }
+    lobby.availableWords = combined;
+  }
+  
+  // Pick a random word from available words (not just the first)
+  const randomIndex = crypto.randomInt(lobby.availableWords.length);
+  const selectedWord = lobby.availableWords[randomIndex];
+  
+  // Remove from available and add to used
+  lobby.availableWords.splice(randomIndex, 1);
+  lobby.usedWords.push(selectedWord);
+  
+  console.log(`Selected word: "${selectedWord.word}", ${lobby.availableWords.length} remaining, ${lobby.usedWords.length} used`);
+  
+  return selectedWord;
 }
 
 function makeNameUnique(baseName, existingNames, id) {
@@ -544,7 +588,8 @@ wss.on('connection', (ws, req) => {
             restartReady: [],
             spectatorsWantingToJoin: [],
             lastTimeBelowThreePlayers: null,
-            availableWords: null // Initialize for word randomization
+            availableWords: null, // Initialize for word randomization
+            usedWords: [] // Initialize for word randomization
           }; 
           console.log(`Created new lobby: ${lobbyId}`);
         }
