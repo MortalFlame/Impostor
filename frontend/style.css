@@ -203,13 +203,13 @@ button:disabled {
 
 /* Exit lobby button styling */
 .exit-lobby-btn {
-  margin-top: 12px;
+  margin-top: 24px;
   background: linear-gradient(135deg, #e74c3c, #c0392b);
   color: white;
   border: none;
   border-radius: 6px;
   padding: 0 8px;
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
