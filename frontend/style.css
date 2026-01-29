@@ -21,9 +21,10 @@ body {
   right: 0;
   background: linear-gradient(90deg, #1b2030, #0e111a);
   border-bottom: 1px solid #2a2f42;
-  padding: 10px 0;
+  padding: 8px 0;
   z-index: 1000;
   box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+  height: 50px;
 }
 
 .header-content {
@@ -33,60 +34,71 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  height: 100%;
 }
 
 .lobby-info {
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
 }
 
 .lobby-code-container {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
 }
 
 .lobby-code {
   font-family: monospace;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: bold;
   background: rgba(106, 139, 255, 0.1);
-  padding: 6px 12px;
-  border-radius: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
   border: 1px solid #6a8bff;
   color: #6a8bff;
-  min-width: 80px;
+  min-width: 60px;
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .player-name-display {
-  font-size: 14px;
+  font-size: 13px;
   color: #95a5a6;
-  font-weight: 600;
-  max-width: 120px;
+  font-weight: 500;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 100px;
 }
 
 .connection-status {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
+  gap: 6px;
+  font-size: 12px;
+  min-width: 0;
+  flex-shrink: 0;
 }
 
 .status-dot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   display: inline-block;
+  flex-shrink: 0;
 }
 
 .status-dot.connected {
   background: #2ecc71;
-  box-shadow: 0 0 10px rgba(46, 204, 113, 0.5);
+  box-shadow: 0 0 8px rgba(46, 204, 113, 0.5);
   animation: pulse 2s infinite;
 }
 
@@ -103,19 +115,66 @@ body {
 .button-row {
   display: flex;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
+}
+
+.join-btn, .spectate-btn, #start {
+  height: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  border-radius: 16px;
+  border: none;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.1s, filter 0.1s;
 }
 
 .join-btn {
-  flex: 3; /* 75% */
+  flex: 3;
   min-width: 0;
+  background: linear-gradient(135deg, #6a8bff, #8a6aff);
 }
 
 .spectate-btn {
-  flex: 1; /* 25% */
+  flex: 1;
   min-width: 0;
   font-size: 20px;
   padding: 14px 5px;
+  background: linear-gradient(135deg, #9b59b6, #8e44ad);
+}
+
+#start {
+  width: 100%;
+  background: linear-gradient(135deg, #27ae60, #2ecc71);
+  margin-top: 0;
+}
+
+.join-btn:hover:not(:disabled),
+#start:hover:not(:disabled),
+#submit:hover:not(:disabled),
+#restart:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(120,120,255,0.45);
+}
+
+.spectate-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(155, 89, 182, 0.45);
+}
+
+button:active {
+  transform: scale(0.96);
+  filter: brightness(0.85);
+}
+
+button:disabled { 
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* Exit lobby button styling */
@@ -123,20 +182,26 @@ body {
   background: linear-gradient(135deg, #e74c3c, #c0392b);
   color: white;
   border: none;
-  border-radius: 8px;
-  padding: 6px 12px;
+  border-radius: 6px;
+  padding: 4px 8px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-  min-width: 60px;
-  height: 30px;
+  min-width: 40px;
+  height: 26px;
   margin: 0;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .exit-lobby-btn:hover:not(:disabled) {
   background: linear-gradient(135deg, #ff4d4d, #e74c3c);
   box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
+  transform: translateY(-1px);
 }
 
 .exit-lobby-btn:active:not(:disabled) {
@@ -220,6 +285,7 @@ body {
 h1 {
   text-align: center;
   margin-bottom: 14px;
+  font-size: 24px;
 }
 
 input {
@@ -231,15 +297,12 @@ input {
   background: #0d111c;
   color: #fff;
   font-size: 16px;
+  height: 44px;
 }
 
 input:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-#start {
-  margin-top: 10px;
 }
 
 #exitLobby {
@@ -251,45 +314,10 @@ input:disabled {
   box-shadow: 0 10px 24px rgba(231, 76, 60, 0.45);
 }
 
-button {
-  width: 100%;
-  padding: 14px;
-  border-radius: 16px;
-  border: none;
-  font-size: 16px;
-  font-weight: 600;
-  background: linear-gradient(135deg, #6a8bff, #8a6aff);
-  color: #fff;
-  cursor: pointer;
-  transition: transform 0.1s, box-shadow 0.1s, filter 0.1s;
-}
-
 #spectate {
   margin-top: 10px;
   background: linear-gradient(135deg, #9b59b6, #8e44ad);
 }
-
-button:active {
-  transform: scale(0.96);
-  filter: brightness(0.85);
-}
-
-button:hover:not(:disabled) {
-  transform: translateY(-2px);
-}
-
-#join:hover:not(:disabled),
-#start:hover:not(:disabled),
-#submit:hover:not(:disabled),
-#restart:hover:not(:disabled) {
-  box-shadow: 0 10px 24px rgba(120,120,255,0.45);
-}
-
-#spectate:hover:not(:disabled) {
-  box-shadow: 0 10px 24px rgba(155, 89, 182, 0.45);
-}
-
-button:disabled { opacity: 0.4; }
 
 .players {
   text-align: center;
@@ -449,11 +477,29 @@ button:disabled { opacity: 0.4; }
 .round h3 {
   margin-top: 0;
   text-align: center;
+  font-size: 15px;
+}
+
+#submit, #restart {
+  height: 44px;
+  min-height: 44px;
+  padding: 14px;
+  border-radius: 16px;
+  border: none;
+  font-size: 16px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #6a8bff, #8a6aff);
+  color: #fff;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.1s, filter 0.1s;
+  width: 100%;
+  margin-top: 0;
 }
 
 #voting button {
   margin-top: 6px;
   background: linear-gradient(135deg, #ff5b5b, #ff8c5b);
+  height: 44px;
 }
 
 #voting button:hover:not(:disabled) {
@@ -471,6 +517,7 @@ button:disabled { opacity: 0.4; }
   font-size: 16px;
   border: 1px solid #7f8c8d;
   cursor: not-allowed;
+  height: 44px;
 }
 
 /* Results screen styles */
@@ -501,24 +548,29 @@ button:disabled { opacity: 0.4; }
 .word-hint-container {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   margin: 10px 0;
-  padding: 8px;
+  padding: 10px;
   background: rgba(13, 17, 28, 0.4);
   border-radius: 8px;
   border-left: 4px solid #6a8bff;
+  flex-wrap: wrap;
 }
 
 .word-hint-container div {
   display: flex;
   align-items: center;
   gap: 5px;
+  flex: 1;
+  min-width: 0;
 }
 
 .word-hint-separator {
   color: #95a5a6;
   font-weight: bold;
   margin: 0 5px;
+  flex-shrink: 0;
 }
 
 /* Roles section - align role text */
