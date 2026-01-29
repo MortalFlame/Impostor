@@ -116,18 +116,18 @@ body {
   display: flex;
   gap: 8px;
   margin-bottom: 8px;
-  align-items: center; /* Force center alignment */
+  align-items: center;
 }
 
 /* Base button with explicit height and flexbox */
 .button-base {
-  height: 44px !important; /* Explicit height */
-  min-height: 44px !important; /* Prevent shrinking */
-  display: inline-flex !important; /* Force flexbox */
-  align-items: center !important; /* Vertical center */
-  justify-content: center !important; /* Horizontal center */
-  line-height: 1 !important; /* Kill line-height influence */
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif !important; /* Consistent font stack */
+  height: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   border: none;
   border-radius: 16px;
   font-size: 16px;
@@ -139,8 +139,8 @@ body {
   color: #fff;
 }
 
-.join-btn, .spectate-btn {
-  composes: button-base; /* Use base styles */
+.join-btn, .spectate-btn, #start, #submit, #restart {
+  composes: button-base;
 }
 
 .join-btn {
@@ -154,53 +154,28 @@ body {
   flex: 1;
   min-width: 0;
   background: linear-gradient(135deg, #9b59b6, #8e44ad);
-  padding: 0; /* No padding for emoji-only */
-  font-size: 18px; /* Control emoji size separately */
+  padding: 0;
+  font-size: 18px;
 }
 
 .spectate-icon {
   font-size: 18px;
-  line-height: 1 !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  height: 100% !important;
-  width: 100% !important;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
 }
 
 #start, #submit, #restart {
-  height: 44px !important;
-  min-height: 44px !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  line-height: 1 !important;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif !important;
   width: 100%;
-  border: none;
-  border-radius: 16px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 0.1s, box-shadow 0.1s, filter 0.1s;
-  margin: 0;
-  padding: 0 16px;
-  color: #fff;
   background: linear-gradient(135deg, #6a8bff, #8a6aff);
+  padding: 0 16px;
 }
 
 #start {
   background: linear-gradient(135deg, #27ae60, #2ecc71);
-}
-
-/* Ensure all other buttons use the same pattern */
-.exit-lobby-btn, .vote-btn, .spectator-vote-btn {
-  height: auto !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  line-height: 1 !important;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif !important;
 }
 
 .join-btn:hover:not(:disabled),
@@ -235,10 +210,16 @@ button:disabled {
   padding: 0 8px;
   font-size: 12px;
   font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
   min-width: 40px;
-  height: 26px !important;
+  height: 26px;
   margin: 0;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .exit-lobby-btn:hover:not(:disabled) {
@@ -526,7 +507,7 @@ input:disabled {
 #voting button {
   margin-top: 6px;
   background: linear-gradient(135deg, #ff5b5b, #ff8c5b);
-  height: 44px !important;
+  height: 44px;
   width: 100%;
   padding: 0 16px;
 }
@@ -543,7 +524,7 @@ input:disabled {
   color: #95a5a6;
   border: 1px solid #7f8c8d;
   cursor: not-allowed;
-  height: 44px !important;
+  height: 44px;
   padding: 0 16px;
 }
 
