@@ -648,6 +648,9 @@ function connect() {
             nickname.value = nickname.value.startsWith('👁️ ') ? nickname.value : `👁️ ${nickname.value.trim()}`;
             nickname.disabled = true;
           }
+          
+          // Show exit button in header after joining lobby
+          exitLobbyBtn.style.display = 'block';
         }
 
         if (d.type === 'lobbyUpdate') {
@@ -681,7 +684,7 @@ function connect() {
           lobbyCard.classList.add('hidden');
           gameCard.classList.remove('hidden');
           
-          exitLobbyBtn.style.display = 'none';
+          exitLobbyBtn.style.display = 'block';
           
           hasClickedRestart = false;
           spectatorHasClickedRestart = false;
@@ -839,11 +842,16 @@ function connect() {
           });
           rolesHtml += '</div>';
           
+          // UPDATED: Word and hint on same line
           results.innerHTML =
             `<h2 style="color:${winnerColor}; text-align:center">${d.winner} Won!</h2>` +
             reasonText +
-            `<div><b>Word:</b> ${capitalize(d.secretWord)}</div>` +
-            `<div><b>Hint:</b> ${capitalize(d.hint)}</div><hr>` +
+            `<div class="word-hint-container">
+              <div><b>Word:</b> ${capitalize(d.secretWord)}</div>
+              <span class="word-hint-separator">|</span>
+              <div><b>Hint:</b> ${capitalize(d.hint)}</div>
+            </div>` +
+            '<hr>' +
             '<b>Roles</b><br>' + rolesHtml;
 
           voting.innerHTML = '';
@@ -921,10 +929,15 @@ function connect() {
           }
           votesHtml += '</div>';
           
+          // UPDATED: Word and hint on same line
           results.innerHTML =
             `<h2 style="color:${winnerColor}; text-align:center">${d.winner} Won!</h2>` +
-            `<div><b>Word:</b> ${capitalize(d.secretWord)}</div>` +
-            `<div><b>Hint:</b> ${capitalize(d.hint)}</div><hr>` +
+            `<div class="word-hint-container">
+              <div><b>Word:</b> ${capitalize(d.secretWord)}</div>
+              <span class="word-hint-separator">|</span>
+              <div><b>Hint:</b> ${capitalize(d.hint)}</div>
+            </div>` +
+            '<hr>' +
             '<b>Roles</b><br>' + rolesHtml +
             (d.votes ? '<hr><b>Votes</b><br>' + votesHtml : '') +
             '<br><br>';
