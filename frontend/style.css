@@ -111,16 +111,16 @@ body {
   animation: blink 1.5s infinite;
 }
 
-/* Fixed button row styling */
+/* FIXED: Button row styling - Perfect alignment */
 .button-row {
   display: flex;
   gap: 8px;
   margin-bottom: 8px;
-  align-items: center; /* Changed from stretch to center */
+  align-items: stretch;
   height: 44px;
 }
 
-/* Base button styles for all buttons */
+/* Base button styles for consistent alignment */
 button {
   border: none;
   border-radius: 16px;
@@ -128,15 +128,15 @@ button {
   font-weight: 600;
   cursor: pointer;
   transition: transform 0.1s, box-shadow 0.1s, filter 0.1s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  margin: 0;
+  padding: 0;
+  display: block;
+  text-align: center;
 }
 
 .join-btn, .spectate-btn, #start, #submit, #restart {
   height: 44px;
-  min-height: 44px;
-  padding: 0;
+  line-height: 44px; /* This is key for vertical centering */
   color: #fff;
 }
 
@@ -145,31 +145,37 @@ button {
   min-width: 0;
   background: linear-gradient(135deg, #6a8bff, #8a6aff);
   font-size: 16px;
-  line-height: 44px;
+  font-weight: 600;
+  padding: 0;
+  border: none;
 }
 
 .spectate-btn {
   flex: 1;
   min-width: 0;
   background: linear-gradient(135deg, #9b59b6, #8e44ad);
+  font-size: 20px; /* Larger font for emoji */
   padding: 0;
-  height: 44px;
-}
-
-.spectate-icon {
-  font-size: 20px;
-  line-height: 1;
+  border: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100%;
-  width: 100%;
+}
+
+.spectate-icon {
+  display: block;
+  line-height: 1;
+  font-size: 20px;
+  transform: translateY(1px); /* Minor adjustment for emoji alignment */
 }
 
 #start, #submit, #restart {
   width: 100%;
   background: linear-gradient(135deg, #6a8bff, #8a6aff);
   margin-top: 0;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 0;
 }
 
 #start {
@@ -506,6 +512,10 @@ input:disabled {
   margin-top: 6px;
   background: linear-gradient(135deg, #ff5b5b, #ff8c5b);
   height: 44px;
+  line-height: 44px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
 }
 
 #voting button:hover:not(:disabled) {
@@ -524,6 +534,7 @@ input:disabled {
   border: 1px solid #7f8c8d;
   cursor: not-allowed;
   height: 44px;
+  line-height: 44px;
 }
 
 /* Results screen styles */
