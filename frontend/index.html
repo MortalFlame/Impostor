@@ -22,6 +22,7 @@
           <span id="connectionText">Connecting...</span>
         </div>
       </div>
+      <button id="exitLobby" class="exit-lobby-btn" style="display:none;">Exit</button>
     </div>
   </div>
 
@@ -33,10 +34,11 @@
       <input id="nickname" placeholder="Your name" />
       <input id="lobbyId" placeholder="Lobby code (optional)" />
 
-      <button id="join">Join Lobby</button>
+      <div class="button-row">
+        <button id="join" class="join-btn">Join Lobby</button>
+        <button id="spectate" class="spectate-btn">👁️</button>
+      </div>
       <button id="start" disabled>Start Game</button>
-      <button id="spectate">👁️ Join as Spectator</button>
-      <button id="exitLobby" style="display:none;">Exit Lobby</button>
 
       <div id="players" class="players"></div>
     </div>
