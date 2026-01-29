@@ -16,18 +16,25 @@ const wss = new WebSocketServer({
   clientTracking: true
 });
 
-const words = JSON.parse(fs.readFileSync(__dirname + '/words.json', 'utf8'));
+const wordsData = JSON.parse(fs.readFileSync(__dirname + '/words.json', 'utf8'));
 
 let lobbies = {};
-let usedIndexes = [];
 const SERVER_ID = crypto.randomUUID();
 
-function getRandomWord() {
-  if (usedIndexes.length === words.length) usedIndexes = [];
-  let i;
-  do { i = crypto.randomInt(words.length); } while (usedIndexes.includes(i));
-  usedIndexes.push(i);
-  return words[i];
+// FIXED: Better word randomization using Fisher-Yates shuffle
+function getRandomWord(lobby) {
+  if (!lobby.availableWords || lobby.availableWords.length === 0) {
+    // Shuffle all words using Fisher-Yates algorithm
+    lobby.availableWords = [...wordsData];
+    for (let i = lobby.availableWords.length - 1; i > 0; i--) {
+      const j = crypto.randomInt(i + 1);
+      [lobby.availableWords[i], lobby.availableWords[j]] = [lobby.availableWords[j], lobby.availableWords[i]];
+    }
+    console.log(`Shuffled ${lobby.availableWords.length} words for lobby ${Object.keys(lobbies).find(k => lobbies[k] === lobby)}`);
+  }
+  
+  // Take the first word from the shuffled array
+  return lobby.availableWords.shift();
 }
 
 function makeNameUnique(baseName, existingNames, id) {
@@ -199,7 +206,7 @@ function startGame(lobby) {
 
   lobby.spectators.forEach(s => s.vote = '');
 
-  const { word, hint } = getRandomWord();
+  const { word, hint } = getRandomWord(lobby);
   lobby.word = word;
   lobby.hint = hint;
 
@@ -254,7 +261,7 @@ function startGame(lobby) {
   startTurnTimer(lobby);
 }
 
-// NEW: Store turnEndsAt once per turn
+// Store turnEndsAt once per turn
 function setTurnEndTime(lobby) {
   lobby.turnEndsAt = Date.now() + 30000; // Store once per turn
 }
@@ -279,12 +286,9 @@ function startTurnTimer(lobby) {
       console.log(`Turn timeout for player ${currentPlayer.name}`);
       
       if (lobby.players[lobby.turn]?.id === currentPlayer.id) {
-        if (currentPlayer.ws?.readyState !== 1) {
-          skipCurrentPlayer(lobby, true);
-        } else {
-          console.log(`Player ${currentPlayer.name} is connected but timed out`);
-          skipCurrentPlayer(lobby, true);
-        }
+        // FIXED: Even if player is disconnected, we still process the timeout
+        // This allows the 30-second grace period to count down
+        skipCurrentPlayer(lobby, true);
       }
     }, 30000)
   };
@@ -539,7 +543,8 @@ wss.on('connection', (ws, req) => {
             turnEndsAt: null,  // Initialize turnEndsAt
             restartReady: [],
             spectatorsWantingToJoin: [],
-            lastTimeBelowThreePlayers: null
+            lastTimeBelowThreePlayers: null,
+            availableWords: null // Initialize for word randomization
           }; 
           console.log(`Created new lobby: ${lobbyId}`);
         }
@@ -633,7 +638,6 @@ wss.on('connection', (ws, req) => {
           console.log(`Player ${player.name} exiting lobby ${lobbyId}`);
           
           const wasGameInProgress = (lobby.phase !== 'lobby' && lobby.phase !== 'results');
-          const playerWasImpostor = player.role === 'impostor';
           
           if (player.isSpectator) {
             lobby.spectators = lobby.spectators.filter(s => s.id !== player.id);
@@ -921,9 +925,7 @@ wss.on('connection', (ws, req) => {
       
       const wasGameInProgress = (lobby.phase !== 'lobby' && lobby.phase !== 'results');
       
-      // FIXED: Remove duplicate skip timeout - rely on existing turnTimeout
-      // No setTimeout needed here
-      
+      // FIXED: Check game end conditions immediately on disconnect
       if (wasGameInProgress) {
         checkGameEndConditions(lobby, lobbyId);
       }
