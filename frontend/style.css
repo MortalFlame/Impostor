@@ -493,16 +493,31 @@ input:disabled {
   font-size: 15px;
 }
 
-#voting button {
+/* FIXED: Voting button styling */
+.vote-btn {
   margin-top: 6px;
   background: linear-gradient(135deg, #ff5b5b, #ff8c5b);
   height: 44px;
   width: 100%;
   padding: 0 16px;
+  border: none;
+  border-radius: 16px;
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.1s, filter 0.1s;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-#voting button:hover:not(:disabled) {
+.vote-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
   box-shadow: 0 10px 24px rgba(255, 91, 91, 0.45);
+}
+
+.vote-btn:active {
+  transform: scale(0.96);
+  filter: brightness(0.85);
 }
 
 .spectator-vote-btn {
@@ -515,6 +530,11 @@ input:disabled {
   cursor: not-allowed;
   height: 44px;
   padding: 0 16px;
+  font-size: 16px;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Results screen styles */
@@ -541,7 +561,7 @@ input:disabled {
   overflow: hidden;
 }
 
-/* Results screen word and hint on same line */
+/* FIXED: Remove purple edge from word-hint-container */
 .word-hint-container {
   display: flex;
   align-items: center;
@@ -551,7 +571,7 @@ input:disabled {
   padding: 10px;
   background: rgba(13, 17, 28, 0.4);
   border-radius: 8px;
-  border-left: 4px solid #6a8bff;
+  /* REMOVED: border-left: 4px solid #6a8bff; */
   flex-wrap: wrap;
 }
 
