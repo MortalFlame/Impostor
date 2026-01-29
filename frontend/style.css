@@ -116,15 +116,13 @@ body {
   display: flex;
   gap: 8px;
   margin-bottom: 8px;
+  align-items: stretch; /* Make buttons stretch to same height */
 }
 
-.join-btn, .spectate-btn, #start {
+.join-btn, .spectate-btn, #start, #submit, #restart {
   height: 44px;
   min-height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 14px;
+  padding: 0; /* Remove padding and use line-height for vertical centering */
   border-radius: 16px;
   border: none;
   font-size: 16px;
@@ -132,6 +130,10 @@ body {
   color: #fff;
   cursor: pointer;
   transition: transform 0.1s, box-shadow 0.1s, filter 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .join-btn {
@@ -144,14 +146,18 @@ body {
   flex: 1;
   min-width: 0;
   font-size: 20px;
-  padding: 14px 5px;
   background: linear-gradient(135deg, #9b59b6, #8e44ad);
+  padding: 0; /* Ensure no extra padding */
+}
+
+#start, #submit, #restart {
+  width: 100%;
+  background: linear-gradient(135deg, #6a8bff, #8a6aff);
+  margin-top: 0;
 }
 
 #start {
-  width: 100%;
   background: linear-gradient(135deg, #27ae60, #2ecc71);
-  margin-top: 0;
 }
 
 .join-btn:hover:not(:disabled),
@@ -183,7 +189,7 @@ button:disabled {
   color: white;
   border: none;
   border-radius: 6px;
-  padding: 4px 8px;
+  padding: 0 8px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -478,22 +484,6 @@ input:disabled {
   margin-top: 0;
   text-align: center;
   font-size: 15px;
-}
-
-#submit, #restart {
-  height: 44px;
-  min-height: 44px;
-  padding: 14px;
-  border-radius: 16px;
-  border: none;
-  font-size: 16px;
-  font-weight: 600;
-  background: linear-gradient(135deg, #6a8bff, #8a6aff);
-  color: #fff;
-  cursor: pointer;
-  transition: transform 0.1s, box-shadow 0.1s, filter 0.1s;
-  width: 100%;
-  margin-top: 0;
 }
 
 #voting button {
