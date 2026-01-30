@@ -282,6 +282,11 @@ function updateLobbyList(lobbies) {
   const lobbyListContainer = document.getElementById('lobbyListContainer');
   if (!lobbyListContainer) return;
   
+  // Ensure container is visible when we're browsing lobbies
+  if (lobbyCard && !lobbyCard.classList.contains('hidden')) {
+    lobbyListContainer.style.display = 'block';
+  }
+  
   if (lobbies.length === 0) {
     lobbyListContainer.innerHTML = `
       <div class="lobby-list-header">
@@ -528,6 +533,14 @@ function exitLobby() {
   
   // Start auto-refresh again
   startLobbyListAutoRefresh();
+  
+  // Reconnect for lobby browsing
+  setTimeout(() => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      joinType = 'browseLobbies';
+      connect();
+    }
+  }, 300);
 }
 
 function resetToLobbyScreen() {
@@ -671,7 +684,8 @@ function connect() {
     return;
   }
 
-  if (!nickname.value.trim() && joinType !== 'joinLobby') {
+  // Only require nickname for joinLobby or joinSpectator, not for browseLobbies
+  if (!nickname.value.trim() && (joinType === 'joinLobby' || joinType === 'joinSpectator')) {
     alert('Please enter a nickname');
     return;
   }
@@ -712,7 +726,7 @@ function connect() {
       }
     }, 5000);
     
-    ws.onopen = () => {
+  ws.onopen = () => {
   safeLog('Game connection established');
   if (connectTimeout) {
     clearTimeout(connectTimeout);
@@ -724,7 +738,10 @@ function connect() {
   hasShownConnectionWarning = false;
   updateConnectionStatus('connected');
   
-  gameHeader.classList.remove('hidden');
+  // Don't show game header for lobby browsing
+  if (joinType !== 'browseLobbies') {
+    gameHeader.classList.remove('hidden');
+  }
   
   if (window.pingInterval) clearInterval(window.pingInterval);
   window.pingInterval = setInterval(() => {
@@ -739,27 +756,33 @@ function connect() {
   }, 25000);
   
   // FIX #2: Handle different connection types correctly
-  if (joinType === 'browseLobbies') {
-    // For browsing lobbies, just send a getLobbyList request
-    // This establishes the connection without joining any lobby
-    ws.send(JSON.stringify({ type: 'getLobbyList' }));
-  } else if (joinType === 'joinSpectator') {
-    // Joining as spectator
-    ws.send(JSON.stringify({
-      type: 'joinSpectator',
-      name: nickname.value.trim(),
-      lobbyId: lobbyId.value.trim(),
-      playerId
-    }));
-  } else {
-    // Default: joining as player (host or regular player)
-    ws.send(JSON.stringify({
-      type: 'joinLobby',
-      name: nickname.value.trim(),
-      lobbyId: lobbyId.value || undefined,
-      playerId
-    }));
-  }
+  setTimeout(() => {
+    if (joinType === 'browseLobbies') {
+      // For browsing lobbies, just send a getLobbyList request
+      // Wait a bit to ensure connection is fully established
+      try {
+        ws.send(JSON.stringify({ type: 'getLobbyList' }));
+      } catch (err) {
+        safeError('Failed to send getLobbyList');
+      }
+    } else if (joinType === 'joinSpectator') {
+      // Joining as spectator
+      ws.send(JSON.stringify({
+        type: 'joinSpectator',
+        name: nickname.value.trim(),
+        lobbyId: lobbyId.value.trim(),
+        playerId
+      }));
+    } else {
+      // Default: joining as player (host or regular player)
+      ws.send(JSON.stringify({
+        type: 'joinLobby',
+        name: nickname.value.trim(),
+        lobbyId: lobbyId.value || undefined,
+        playerId
+      }));
+    }
+  }, 200);
 };
   
 
@@ -1413,12 +1436,19 @@ updateConnectionStatus('disconnected');
 safeLog('Game client initialized');
 
 // FIX #1: Auto-connect for lobby browsing AND start auto-refresh
-setTimeout(() => {
-  // Connect to WebSocket immediately for lobby browsing
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    joinType = 'browseLobbies';  // New connection type for browsing
-    connect();
-  }
-  refreshLobbyList();
-  startLobbyListAutoRefresh();
-}, 500);
+// This runs immediately when page loads for ALL players
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    // Only connect if we're not already in a lobby/game
+    if (lobbyCard && !lobbyCard.classList.contains('hidden')) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        joinType = 'browseLobbies';
+        connect();
+      } else {
+        // Already connected, just refresh the lobby list
+        refreshLobbyList();
+      }
+      startLobbyListAutoRefresh();
+    }
+  }, 100);
+});
