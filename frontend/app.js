@@ -575,13 +575,21 @@ function resetToLobbyScreen() {
     lobbyListContainer.style.display = 'block';
   }
   
-  // Refresh lobby list when returning to lobby screen
-  setTimeout(() => {
-    refreshLobbyList();
-  }, 500);
-  
-  // Start auto-refresh of lobby list
-  startLobbyListAutoRefresh();
+  // // Refresh lobby list when returning to lobby screen
+setTimeout(() => {
+  refreshLobbyList();
+}, 500);
+
+// Start auto-refresh of lobby list
+startLobbyListAutoRefresh();
+
+// FIX #3: Reconnect for lobby browsing if not already connected
+setTimeout(() => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    joinType = 'browseLobbies';
+    connect();
+  }
+}, 100);
 }
 
 function joinAsPlayer(isReconnect = false) {
@@ -703,47 +711,50 @@ function connect() {
     }, 5000);
     
     ws.onopen = () => {
-      safeLog('Game connection established');
-      if (connectTimeout) {
-        clearTimeout(connectTimeout);
-        connectTimeout = null;
+  safeLog('Game connection established');
+  if (connectTimeout) {
+    clearTimeout(connectTimeout);
+    connectTimeout = null;
+  }
+  
+  connectionAttempts = 0;
+  reconnectDelay = 2000;
+  hasShownConnectionWarning = false;
+  updateConnectionStatus('connected');
+  
+  gameHeader.classList.remove('hidden');
+  
+  if (window.pingInterval) clearInterval(window.pingInterval);
+  window.pingInterval = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) {
+      lastPingTime = Date.now();
+      try {
+        ws.send(JSON.stringify({ type: 'ping' }));
+      } catch (err) {
+        safeError('Failed to send ping');
       }
-      
-      connectionAttempts = 0;
-      reconnectDelay = 2000;
-      hasShownConnectionWarning = false;
-      updateConnectionStatus('connected');
-      
-      gameHeader.classList.remove('hidden');
-      
-      if (window.pingInterval) clearInterval(window.pingInterval);
-      window.pingInterval = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          lastPingTime = Date.now();
-          try {
-            ws.send(JSON.stringify({ type: 'ping' }));
-          } catch (err) {
-            safeError('Failed to send ping');
-          }
-        }
-      }, 25000);
-      
-      if (joinType === 'joinSpectator') {
-        ws.send(JSON.stringify({
-          type: 'joinSpectator',
-          name: nickname.value.trim(),
-          lobbyId: lobbyId.value.trim(),
-          playerId
-        }));
-      } else {
-        ws.send(JSON.stringify({
-          type: 'joinLobby',
-          name: nickname.value.trim(),
-          lobbyId: lobbyId.value || undefined,
-          playerId
-        }));
-      }
-    };
+    }
+  }, 25000);
+  
+  // FIX #2: Handle browseLobbies connection type
+  if (joinType === 'browseLobbies') {
+    // Just send a getLobbyList request to let server know we're connected
+    ws.send(JSON.stringify({ type: 'getLobbyList' }));
+  } else if (joinType === 'joinSpectator') {
+    ws.send(JSON.stringify({
+      type: 'joinSpectator',
+      name: nickname.value.trim(),
+      lobbyId: lobbyId.value.trim(),
+      playerId
+    }));
+  } else {
+    ws.send(JSON.stringify({
+      type: 'joinLobby',
+      name: nickname.value.trim(),
+      lobbyId: lobbyId.value || undefined,
+      playerId
+    }));
+  }
 
     ws.onmessage = (e) => {
       try {
@@ -1394,8 +1405,13 @@ window.addEventListener('beforeunload', () => {
 updateConnectionStatus('disconnected');
 safeLog('Game client initialized');
 
-// FIX #1: Start lobby auto-refresh on page load (CRITICAL)
+// FIX #1: Auto-connect for lobby browsing AND start auto-refresh
 setTimeout(() => {
+  // Connect to WebSocket immediately for lobby browsing
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    joinType = 'browseLobbies';  // New connection type for browsing
+    connect();
+  }
   refreshLobbyList();
   startLobbyListAutoRefresh();
 }, 500);
