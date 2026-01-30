@@ -634,6 +634,54 @@ wss.on('connection', (ws, req) => {
       if (msg.type === 'joinLobby') {
         lobbyId = msg.lobbyId || Math.floor(1000 + Math.random() * 9000).toString();
         
+        // FIX: Check if player already owns a lobby and delete it
+        if (!msg.lobbyId) { // Only for creating new lobbies (not joining existing)
+          Object.keys(lobbies).forEach(existingLobbyId => {
+            const existingLobby = lobbies[existingLobbyId];
+            if (existingLobby.owner === msg.playerId) {
+              console.log(`Deleting old lobby ${existingLobbyId} owned by player ${msg.playerId}`);
+              
+              // Notify players in the old lobby that it's being deleted
+              broadcast(existingLobby, {
+                type: 'lobbyClosed',
+                message: 'Host created a new lobby. This lobby has been closed.'
+              });
+              
+              // Clean up timers
+              if (existingLobby.turnTimeout?.timer) {
+                clearTimeout(existingLobby.turnTimeout.timer);
+              }
+              
+              // Close all WebSocket connections in the old lobby
+              existingLobby.players.forEach(p => {
+                if (p.ws && p.ws.readyState === WebSocket.OPEN) {
+                  try {
+                    p.ws.close(1000, 'Lobby closed by host');
+                  } catch (err) {
+                    // Ignore close errors
+                  }
+                }
+              });
+              
+              existingLobby.spectators.forEach(s => {
+                if (s.ws && s.ws.readyState === WebSocket.OPEN) {
+                  try {
+                    s.ws.close(1000, 'Lobby closed by host');
+                  } catch (err) {
+                    // Ignore close errors
+                  }
+                }
+              });
+              
+              // Delete the lobby
+              delete lobbies[existingLobbyId];
+            }
+          });
+          
+          // Broadcast updated lobby list after deleting old lobby
+          broadcastLobbyList();
+        }
+        
         if (!lobbies[lobbyId]) {
           lobbies[lobbyId] = { 
             players: [], 
@@ -650,7 +698,7 @@ wss.on('connection', (ws, req) => {
             availableWords: null,
             usedWords: []
           }; 
-          console.log(`Created new lobby: ${lobbyId}`);
+          console.log(`Created new lobby: ${lobbyId} for player ${msg.playerId}`);
           
           // FIX: Broadcast lobby list when a lobby is created
           broadcastLobbyList();
