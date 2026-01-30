@@ -786,28 +786,6 @@ wss.on('connection', (ws, req) => {
           broadcastLobbyList();
         }
         
-        if (!lobbies[lobbyId]) {
-          lobbies[lobbyId] = { 
-            players: [], 
-            spectators: [],
-            phase: 'lobby', 
-            owner: msg.playerId,
-            hostName: null, // Will be set when host joins
-            createdAt: Date.now(),
-            turnTimeout: null,
-            turnEndsAt: null,
-            restartReady: [],
-            spectatorsWantingToJoin: [],
-            lastTimeBelowThreePlayers: null,
-            availableWords: null,
-            usedWords: []
-          }; 
-          console.log(`Created new lobby: ${lobbyId} for player ${msg.playerId}`);
-          
-          // FIX: Broadcast lobby list when a lobby is created
-          broadcastLobbyList();
-        }
-        
         const lobby = lobbies[lobbyId];
 
         // Allow joining during results phase
