@@ -47,7 +47,128 @@ function broadcastLobbyList() {
     }
   });
 }
+// Helper function to remove a player from any lobby they might be in
+function removePlayerFromAllLobbies(playerId, reason = 'Joined another lobby') {
+  let removedFrom = [];
+  
+  Object.keys(lobbies).forEach(lobbyId => {
+    const lobby = lobbies[lobbyId];
+    let wasRemoved = false;
+    
+    // Check in players
+    const playerIndex = lobby.players.findIndex(p => p.id === playerId);
+    if (playerIndex !== -1) {
+      const player = lobby.players[playerIndex];
+      
+      // Notify the player if connected
+      if (player.ws && player.ws.readyState === WebSocket.OPEN) {
+        try {
+          player.ws.send(JSON.stringify({ 
+            type: 'lobbyClosed', 
+            message: reason 
+          }));
+        } catch (err) {
+          // Ignore send errors
+        }
+      }
+      
+      lobby.players.splice(playerIndex, 1);
+      wasRemoved = true;
+      
+      // If the player was the owner, assign a new owner
+      if (lobby.owner === playerId) {
+        const newOwner = lobby.players.find(p => p.ws?.readyState === 1);
+        if (newOwner) {
+          lobby.owner = newOwner.id;
+          // Update host name when owner changes
+          const hostPlayer = lobby.players.find(p => p.id === lobby.owner);
+          if (hostPlayer) {
+            lobby.hostName = hostPlayer.name;
+          }
+        } else if (lobby.players.length > 0) {
+          lobby.owner = lobby.players[0].id;
+          const hostPlayer = lobby.players.find(p => p.id === lobby.owner);
+          if (hostPlayer) {
+            lobby.hostName = hostPlayer.name;
+          }
+        }
+      }
+    }
+    
+    // Check in spectators
+    const spectatorIndex = lobby.spectators.findIndex(s => s.id === playerId);
+    if (spectatorIndex !== -1) {
+      const spectator = lobby.spectators[spectatorIndex];
+      
+      // Notify the spectator if connected
+      if (spectator.ws && spectator.ws.readyState === WebSocket.OPEN) {
+        try {
+          spectator.ws.send(JSON.stringify({ 
+            type: 'lobbyClosed', 
+            message: reason 
+          }));
+        } catch (err) {
+          // Ignore send errors
+        }
+      }
+      
+      lobby.spectators.splice(spectatorIndex, 1);
+      wasRemoved = true;
+    }
+    
+    // Clean up empty lobbies
+    if (wasRemoved) {
+      removedFrom.push(lobbyId);
+      
+      if (lobby.players.length === 0 && lobby.spectators.length === 0) {
+        console.log(`Deleting empty lobby: ${lobbyId}`);
+        
+        if (lobby.turnTimeout?.timer) {
+          clearTimeout(lobby.turnTimeout.timer);
+        }
+        
+        delete lobbies[lobbyId];
+      } else {
+        // Broadcast updated lobby state
+        broadcast(lobby, { 
+          type: 'lobbyUpdate', 
+          players: lobby.players.map(p => ({ 
+            id: p.id, 
+            name: p.name, 
+            connected: p.ws?.readyState === 1 
+          })),
+          spectators: lobby.spectators.map(s => ({ 
+            id: s.id, 
+            name: s.name, 
+            connected: s.ws?.readyState === 1 
+          })),
+          owner: lobby.owner,
+          phase: lobby.phase
+        });
+      }
+    }
+  });
+  
+  if (removedFrom.length > 0) {
+    console.log(`Player ${playerId} removed from lobbies: ${removedFrom.join(', ')}`);
+    broadcastLobbyList();
+  }
+  
+  return removedFrom.length > 0;
+}
 
+// Function to check if a name is already taken in a lobby (case-insensitive)
+function isNameTakenInLobby(lobby, nameToCheck, excludePlayerId = null) {
+  const allNames = [
+    ...lobby.players.map(p => ({ name: p.name, id: p.id })),
+    ...lobby.spectators.map(s => ({ name: s.name, id: s.id }))
+  ];
+  
+  return allNames.some(p => 
+    p.name.toLowerCase() === nameToCheck.toLowerCase() && 
+    p.id !== excludePlayerId
+  );
+}
 // FIXED: True random word selection with no repeats until all used
 function getRandomWord(lobby) {
   if (!lobby.availableWords || lobby.availableWords.length === 0) {
@@ -634,51 +755,34 @@ wss.on('connection', (ws, req) => {
       if (msg.type === 'joinLobby') {
         lobbyId = msg.lobbyId || Math.floor(1000 + Math.random() * 9000).toString();
         
-        // FIX: Check if player already owns a lobby and delete it
-        if (!msg.lobbyId) { // Only for creating new lobbies (not joining existing)
-          Object.keys(lobbies).forEach(existingLobbyId => {
-            const existingLobby = lobbies[existingLobbyId];
-            if (existingLobby.owner === msg.playerId) {
-              console.log(`Deleting old lobby ${existingLobbyId} owned by player ${msg.playerId}`);
-              
-              // Notify players in the old lobby that it's being deleted
-              broadcast(existingLobby, {
-                type: 'lobbyClosed',
-                message: 'Host created a new lobby. This lobby has been closed.'
-              });
-              
-              // Clean up timers
-              if (existingLobby.turnTimeout?.timer) {
-                clearTimeout(existingLobby.turnTimeout.timer);
-              }
-              
-              // Close all WebSocket connections in the old lobby
-              existingLobby.players.forEach(p => {
-                if (p.ws && p.ws.readyState === WebSocket.OPEN) {
-                  try {
-                    p.ws.close(1000, 'Lobby closed by host');
-                  } catch (err) {
-                    // Ignore close errors
-                  }
-                }
-              });
-              
-              existingLobby.spectators.forEach(s => {
-                if (s.ws && s.ws.readyState === WebSocket.OPEN) {
-                  try {
-                    s.ws.close(1000, 'Lobby closed by host');
-                  } catch (err) {
-                    // Ignore close errors
-                  }
-                }
-              });
-              
-              // Delete the lobby
-              delete lobbies[existingLobbyId];
-            }
-          });
+        // Remove player from any other lobbies they might be in
+        removePlayerFromAllLobbies(msg.playerId, 'Joined another lobby');
+        
+        // If creating a new lobby (no lobbyId provided), check for existing lobby by same host
+        if (!msg.lobbyId) {
+          // Already handled by removePlayerFromAllLobbies
+          console.log(`Player ${msg.playerId} creating new lobby ${lobbyId}`);
+        }
+        
+        if (!lobbies[lobbyId]) {
+          lobbies[lobbyId] = { 
+            players: [], 
+            spectators: [],
+            phase: 'lobby', 
+            owner: msg.playerId,
+            hostName: null, // Will be set when host joins
+            createdAt: Date.now(),
+            turnTimeout: null,
+            turnEndsAt: null,
+            restartReady: [],
+            spectatorsWantingToJoin: [],
+            lastTimeBelowThreePlayers: null,
+            availableWords: null,
+            usedWords: []
+          }; 
+          console.log(`Created new lobby: ${lobbyId} for player ${msg.playerId}`);
           
-          // Broadcast updated lobby list after deleting old lobby
+          // FIX: Broadcast lobby list when a lobby is created
           broadcastLobbyList();
         }
         
@@ -782,6 +886,9 @@ wss.on('connection', (ws, req) => {
           }));
           return;
         }
+        
+        // Remove player from any other lobbies they might be in
+        removePlayerFromAllLobbies(msg.playerId, 'Joined as spectator in another lobby');
         
         return handleSpectatorJoin(ws, msg, msg.lobbyId, connectionId);
       }
@@ -1147,8 +1254,15 @@ wss.on('connection', (ws, req) => {
       player.connectionEpoch = (player.connectionEpoch || 0) + 1;
       ws.connectionEpoch = player.connectionEpoch;
     } else {
+      // Check if name is already taken in this lobby
       const allNames = [...lobby.players, ...lobby.spectators].map(p => p.name);
-      const uniqueName = makeNameUnique(msg.name, allNames, msg.playerId);
+      let uniqueName = msg.name.trim();
+      
+      // If name is taken, make it unique
+      if (isNameTakenInLobby(lobby, uniqueName)) {
+        uniqueName = makeNameUnique(uniqueName, allNames, msg.playerId);
+        console.log(`Name "${msg.name}" was taken in lobby ${targetLobbyId}, changed to "${uniqueName}"`);
+      }
       
       player = { 
         id: msg.playerId, 
@@ -1258,7 +1372,15 @@ wss.on('connection', (ws, req) => {
       } else {
         const allNames = [...lobby.players, ...lobby.spectators].map(p => p.name);
         const baseName = msg.name || `Spectator-${Math.floor(Math.random() * 1000)}`;
-        const uniqueName = makeNameUnique(baseName, allNames, msg.playerId);
+        let uniqueName = baseName.trim();
+        
+        // Check if name is already taken in this lobby
+        if (isNameTakenInLobby(lobby, uniqueName)) {
+          uniqueName = makeNameUnique(uniqueName, allNames, msg.playerId);
+          console.log(`Spectator name "${baseName}" was taken in lobby ${targetLobbyId}, changed to "${uniqueName}"`);
+        } else {
+          uniqueName = makeNameUnique(uniqueName, allNames, msg.playerId);
+        }
         
         player = { 
           id: msg.playerId, 
