@@ -8,6 +8,7 @@ const spectate = document.getElementById('spectate');
 const start = document.getElementById('start');
 const exitLobbyBtn = document.getElementById('exitLobby');
 const players = document.getElementById('players');
+const lobbyListContainer = document.getElementById('lobbyListContainer');
 
 const gameHeader = document.getElementById('gameHeader');
 const lobbyCodeDisplay = document.getElementById('lobbyCodeDisplay');
@@ -275,6 +276,91 @@ function updatePlayerList(playersData, spectatorsData = []) {
   players.innerHTML = playersHtml;
 }
 
+function updateLobbyList(lobbies) {
+  const lobbyListContainer = document.getElementById('lobbyListContainer');
+  if (!lobbyListContainer) return;
+  
+  if (lobbies.length === 0) {
+    lobbyListContainer.innerHTML = `
+      <div class="lobby-list-header">
+        <h3>Available Lobbies</h3>
+        <button id="refreshLobbies" class="refresh-btn">🔄</button>
+      </div>
+      <div class="no-lobbies">No lobbies available. Create one!</div>
+    `;
+  } else {
+    let lobbiesHtml = `
+      <div class="lobby-list-header">
+        <h3>Available Lobbies (${lobbies.length})</h3>
+        <button id="refreshLobbies" class="refresh-btn">🔄</button>
+      </div>
+      <div class="lobby-list">
+    `;
+    
+    lobbies.forEach(lobby => {
+      const totalPlayers = lobby.playerCount + lobby.spectatorCount;
+      const playerStatus = `${lobby.playerCount}/${lobby.maxPlayers} players`;
+      const timeAgo = getTimeAgo(lobby.createdAt);
+      
+      lobbiesHtml += `
+        <div class="lobby-item" data-lobby-id="${lobby.id}">
+          <div class="lobby-info">
+            <div class="lobby-code">${lobby.id}</div>
+            <div class="lobby-host">
+              <span class="host-label">Host:</span>
+              <span class="host-name">${lobby.host}</span>
+            </div>
+            <div class="lobby-stats">
+              <span class="player-count">👥 ${playerStatus}</span>
+              <span class="created-ago">${timeAgo}</span>
+            </div>
+          </div>
+          <button class="join-lobby-btn" data-lobby-id="${lobby.id}">
+            Join
+          </button>
+        </div>
+      `;
+    });
+    
+    lobbiesHtml += '</div>';
+    lobbyListContainer.innerHTML = lobbiesHtml;
+    
+    // Add event listeners to join buttons
+    document.querySelectorAll('.join-lobby-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const lobbyIdToJoin = e.target.getAttribute('data-lobby-id');
+        if (lobbyIdToJoin) {
+          document.getElementById('lobbyId').value = lobbyIdToJoin;
+          joinAsPlayer(false);
+        }
+      });
+    });
+    
+    // Add event listener to refresh button
+    document.getElementById('refreshLobbies').addEventListener('click', () => {
+      refreshLobbyList();
+    });
+  }
+}
+
+function getTimeAgo(timestamp) {
+  const now = Date.now();
+  const diff = now - timestamp;
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  return 'Long ago';
+}
+
+function refreshLobbyList() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'getLobbyList' }));
+  }
+}
+
 // SINGLE visibility change handler (FIXED: removed duplicate)
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && currentTurnEndsAt && isMyTurn) {
@@ -393,6 +479,11 @@ function exitLobby() {
     window.pingInterval = null;
   }
   
+  // Refresh lobby list when exiting to lobby screen
+  setTimeout(() => {
+    refreshLobbyList();
+  }, 500);
+  
   safeLog('Exited lobby');
 }
 
@@ -435,6 +526,11 @@ function resetToLobbyScreen() {
     clearInterval(window.pingInterval);
     window.pingInterval = null;
   }
+  
+  // Refresh lobby list when returning to lobby screen
+  setTimeout(() => {
+    refreshLobbyList();
+  }, 500);
 }
 
 function joinAsPlayer(isReconnect = false) {
@@ -632,6 +728,11 @@ function connect() {
           return;
         }
 
+        if (d.type === 'lobbyList') {
+          updateLobbyList(d.lobbies || []);
+          return;
+        }
+
         if (d.type === 'lobbyAssigned') {
           lobbyId.value = d.lobbyId;
           currentLobbyId = d.lobbyId;
@@ -651,6 +752,12 @@ function connect() {
           
           // Show exit button in header after joining lobby
           exitLobbyBtn.style.display = 'block';
+          
+          // Hide lobby list when in a lobby
+          const lobbyListContainer = document.getElementById('lobbyListContainer');
+          if (lobbyListContainer) {
+            lobbyListContainer.style.display = 'none';
+          }
         }
 
         if (d.type === 'lobbyUpdate') {
@@ -1217,3 +1324,8 @@ window.addEventListener('beforeunload', () => {
 
 updateConnectionStatus('disconnected');
 safeLog('Game client initialized');
+
+// Initial refresh of lobby list
+setTimeout(() => {
+  refreshLobbyList();
+}, 1000);
