@@ -287,6 +287,9 @@ function updateLobbyList(lobbies) {
     lobbyListContainer.style.display = 'block';
   }
   
+  // Sort lobbies by creation date (newest first)
+  lobbies.sort((a, b) => b.createdAt - a.createdAt);
+  
   if (lobbies.length === 0) {
     lobbyListContainer.innerHTML = `
       <div class="lobby-list-header">
@@ -306,8 +309,7 @@ function updateLobbyList(lobbies) {
     
     lobbies.forEach(lobby => {
       const totalPlayers = lobby.playerCount + lobby.spectatorCount;
-      const playerStatus = `${lobby.playerCount}/${lobby.maxPlayers} players`;
-      const timeAgo = getTimeAgo(lobby.createdAt);
+      const playerStatus = `${lobby.playerCount} players`;
       
       lobbiesHtml += `
         <div class="lobby-item" data-lobby-id="${lobby.id}">
@@ -315,11 +317,10 @@ function updateLobbyList(lobbies) {
             <div class="lobby-code">${lobby.id}</div>
             <div class="lobby-host">
               <span class="host-label">Host:</span>
-              <span class="host-name">${lobby.host}</span>
+              <span class="host-name" title="${lobby.host}">${lobby.host}</span>
             </div>
             <div class="lobby-stats">
               <span class="player-count">👥 ${playerStatus}</span>
-              <span class="created-ago">${timeAgo}</span>
             </div>
           </div>
           <button class="join-lobby-btn" data-lobby-id="${lobby.id}">
