@@ -33,6 +33,33 @@ const voting = document.getElementById('voting');
 const results = document.getElementById('results');
 const restart = document.getElementById('restart');
 
+// Function to update join button text based on lobby input
+function updateJoinButtonText() {
+  const lobbyInput = document.getElementById('lobbyId');
+  const joinButton = document.getElementById('join');
+  
+  if (lobbyInput && joinButton) {
+    if (lobbyInput.value.trim() === '') {
+      joinButton.textContent = 'Create Lobby';
+    } else {
+      joinButton.textContent = 'Join Lobby';
+    }
+  }
+}
+
+// Add event listeners for the lobby input
+document.addEventListener('DOMContentLoaded', () => {
+  const lobbyInput = document.getElementById('lobbyId');
+  if (lobbyInput) {
+    lobbyInput.addEventListener('input', updateJoinButtonText);
+    lobbyInput.addEventListener('change', updateJoinButtonText);
+    lobbyInput.addEventListener('keyup', updateJoinButtonText);
+    
+    // Initial update
+    setTimeout(updateJoinButtonText, 100);
+  }
+});
+
 let playerId = localStorage.getItem('playerId');
 if (!playerId) {
   playerId = crypto.randomUUID();
