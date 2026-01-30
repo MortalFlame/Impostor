@@ -825,7 +825,7 @@ input:disabled {
   color: #95a5a6;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
 }
 
 .player-count {
@@ -833,7 +833,6 @@ input:disabled {
   align-items: center;
   gap: 4px;
   font-weight: 500;
-  white-space: nowrap;
 }
 
 .join-lobby-btn {
