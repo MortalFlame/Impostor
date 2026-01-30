@@ -788,7 +788,7 @@ input:disabled {
 
 .lobby-code {
   font-family: 'Courier New', monospace;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
   color: #6a8bff;
   margin-bottom: 4px;
@@ -800,11 +800,15 @@ input:disabled {
   color: #95a5a6;
   margin-bottom: 4px;
   line-height: 1.3;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .lobby-host .host-label {
   color: #7f8c8d;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .lobby-host .host-name {
@@ -813,9 +817,7 @@ input:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  display: inline-block;
-  max-width: 150px;
-  vertical-align: bottom;
+  max-width: 120px;
 }
 
 .lobby-stats {
@@ -823,7 +825,7 @@ input:disabled {
   color: #95a5a6;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
 .player-count {
@@ -831,6 +833,7 @@ input:disabled {
   align-items: center;
   gap: 4px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .join-lobby-btn {
