@@ -503,6 +503,7 @@ function exitLobby() {
   spectatorWantsToJoin = false;
   spectatorHasClickedRestart = false;
   myPlayerName = '';
+  joinType = 'browseLobbies';
   updateConnectionStatus('disconnected');
   
   stopTurnTimerAnimation();
@@ -560,6 +561,7 @@ function resetToLobbyScreen() {
   spectatorWantsToJoin = false;
   spectatorHasClickedRestart = false;
   myPlayerName = '';
+  joinType = 'browseLobbies';
   updateConnectionStatus('disconnected');
   
   stopTurnTimerAnimation();
@@ -601,12 +603,12 @@ function joinAsPlayer(isReconnect = false) {
   isSpectator = false;
   spectatorWantsToJoin = false;
   spectatorHasClickedRestart = false;
-  joinType = 'joinLobby';
+  joinType = 'joinLobby';  // IMPORTANT: Set this before connect()
   connectionAttempts = 0;
   reconnectDelay = 2000;
   
-  // FIX #3: REMOVED stopLobbyListAutoRefresh from here
-  // We'll stop it only when we receive lobbyAssigned
+  // Stop auto-refresh when joining a lobby
+  stopLobbyListAutoRefresh();
   
   connect();
 }
@@ -615,12 +617,12 @@ function joinAsSpectator() {
   isSpectator = true;
   spectatorWantsToJoin = false;
   spectatorHasClickedRestart = false;
-  joinType = 'joinSpectator';
+  joinType = 'joinSpectator';  // IMPORTANT: Set this before connect()
   connectionAttempts = 0;
   reconnectDelay = 2000;
   
-  // FIX #3: REMOVED stopLobbyListAutoRefresh from here
-  // We'll stop it only when we receive lobbyAssigned
+  // Stop auto-refresh when joining as spectator
+  stopLobbyListAutoRefresh();
   
   connect();
 }
