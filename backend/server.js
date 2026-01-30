@@ -41,7 +41,7 @@ function broadcastLobbyList() {
           lobbies: lobbyList
         }));
       } catch (err) {
-        console.log('Failed to send lobby list to client');
+        // Ignore send errors
       }
     }
   });
@@ -329,6 +329,9 @@ function startGame(lobby) {
   lobby.turn = firstConnectedIndex;
   
   startTurnTimer(lobby);
+  
+  // FIX #1: Broadcast lobby list when game starts (lobby phase changes)
+  broadcastLobbyList();
 }
 
 // Store turnEndsAt once per turn
@@ -444,11 +447,6 @@ function skipCurrentPlayer(lobby, isTimeout = false) {
   } else if (lobby.phase === 'round2') {
     if (lobby.round2.length >= connectedPlayers.length) {
       lobby.phase = 'voting';
-      if (lobby.turnTimeout?.timer) {
-        clearTimeout(lobby.turnTimeout.timer);
-        lobby.turnTimeout = null;
-      }
-      
       broadcast(lobby, {
         type: 'turnUpdate',
         phase: 'round2',
@@ -522,6 +520,9 @@ function cleanupLobby(lobby, lobbyId) {
       owner: lobby.owner,
       phase: lobby.phase
     });
+    
+    // FIX #3: Broadcast lobby list when players leave during cleanup
+    broadcastLobbyList();
   }
 }
 
@@ -646,6 +647,9 @@ wss.on('connection', (ws, req) => {
             usedWords: []
           }; 
           console.log(`Created new lobby: ${lobbyId}`);
+          
+          // FIX #1: Broadcast lobby list when a lobby is created
+          broadcastLobbyList();
         }
         
         const lobby = lobbies[lobbyId];
@@ -748,7 +752,7 @@ wss.on('connection', (ws, req) => {
               const newOwner = lobby.players.find(p => p.ws?.readyState === 1);
               if (newOwner) {
                 lobby.owner = newOwner.id;
-                // Update host name when owner changes
+                // FIX #6: Update host name when owner changes
                 const hostPlayer = lobby.players.find(p => p.id === lobby.owner);
                 if (hostPlayer) {
                   lobby.hostName = hostPlayer.name;
@@ -796,12 +800,12 @@ wss.on('connection', (ws, req) => {
             // Ignore
           }
           
-          // Mark client as no longer in a lobby
+          // FIX #4: Mark client as no longer in a lobby
           ws.inLobby = false;
           lobbyId = null;
           player = null;
           
-          // Broadcast updated lobby list
+          // FIX #3: Broadcast updated lobby list when player exits
           broadcastLobbyList();
         }
         return;
@@ -1062,13 +1066,13 @@ wss.on('connection', (ws, req) => {
         owner: lobby.owner,
         phase: lobby.phase
       });
+      
+      // FIX #3: Broadcast lobby list when player disconnects
+      broadcastLobbyList();
     }
     
-    // Mark client as no longer in a lobby
+    // FIX #4: Mark client as no longer in a lobby
     ws.inLobby = false;
-    
-    // Broadcast updated lobby list
-    broadcastLobbyList();
     
     console.log(`Connection closed: ${connectionId} (code: ${code}, reason: ${reason})`);
   });
@@ -1110,13 +1114,13 @@ wss.on('connection', (ws, req) => {
         lobby.owner = msg.playerId;
       }
       
-      // Set host name if this is the host
-      if (lobby.owner === msg.playerId && !lobby.hostName) {
+      // FIX #2: Set the host name correctly
+      if (lobby.owner === msg.playerId) {
         lobby.hostName = uniqueName;
       }
     }
 
-    // Mark client as in a lobby
+    // FIX #4: Mark client as in a lobby
     ws.inLobby = true;
 
     if (lobby.phase === 'results') {
@@ -1162,7 +1166,7 @@ wss.on('connection', (ws, req) => {
       phase: lobby.phase
     });
     
-    // Broadcast updated lobby list to clients not in a lobby
+    // FIX #3: Broadcast updated lobby list to clients not in a lobby
     broadcastLobbyList();
   }
 
@@ -1219,7 +1223,7 @@ wss.on('connection', (ws, req) => {
       }
     }
 
-    // Mark client as in a lobby
+    // FIX #4: Mark client as in a lobby
     ws.inLobby = true;
 
     if (lobby.phase === 'results') {
@@ -1308,7 +1312,7 @@ wss.on('connection', (ws, req) => {
       }, 100);
     }
     
-    // Broadcast updated lobby list to clients not in a lobby
+    // FIX #3: Broadcast updated lobby list to clients not in a lobby
     broadcastLobbyList();
   }
 
