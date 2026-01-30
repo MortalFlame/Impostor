@@ -755,6 +755,8 @@ function connect() {
       playerId
     }));
   }
+  };
+  
 
     ws.onmessage = (e) => {
       try {
