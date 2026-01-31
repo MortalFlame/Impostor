@@ -159,6 +159,7 @@ body {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+  font-family: "Segoe UI", system-ui, sans-serif;
 }
 
 .lobby-list-header h3 {
@@ -315,7 +316,7 @@ body {
   align-items: center;
   justify-content: center;
   line-height: 1;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: "Segoe UI", system-ui, sans-serif;
   border: none;
   border-radius: 16px;
   font-size: 16px;
@@ -661,7 +662,7 @@ input:disabled {
   font-weight: 600;
   cursor: pointer;
   transition: transform 0.1s, box-shadow 0.1s, filter 0.1s;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: "Segoe UI", system-ui, sans-serif;
 }
 
 .vote-btn:hover:not(:disabled) {
@@ -685,7 +686,7 @@ input:disabled {
   height: 44px;
   padding: 0 16px;
   font-size: 16px;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: "Segoe UI", system-ui, sans-serif;
   display: flex;
   align-items: center;
   justify-content: center;
