@@ -60,6 +60,7 @@ body {
   font-weight: bold;
   background: rgba(106, 139, 255, 0.1);
   padding: 4px 8px;
+  line-height: 1;
   border-radius: 6px;
   border: 1px solid #6a8bff;
   color: #6a8bff;
