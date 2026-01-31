@@ -45,21 +45,23 @@ body {
   min-width: 0;
 }
 
+/* Remove any extra centering from lobby-code-container */
 .lobby-code-container {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
   flex: 1;
-  height: 100%; /* Take full height of header */
+  height: auto; /* Remove fixed height */
 }
 
-.lobby-code {
-  font-family: "Segoe UI", system-ui, sans-serif;
+/* Fix lobby code alignment in header */
+.header-content .lobby-code {
+  font-family: "Segoe UI", system-ui, sans-serif; /* Change font */
   font-size: 16px;
   font-weight: bold;
   background: rgba(106, 139, 255, 0.1);
-  padding: 6px 10px; /* Adjusted padding for better centering */
+  padding: 4px 8px; /* Reduced padding */
   border-radius: 6px;
   border: 1px solid #6a8bff;
   color: #6a8bff;
@@ -68,11 +70,9 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.2; /* Better line height for centering */
-  height: 32px; /* Fixed height */
-  display: flex;
-  align-items: center; /* Center vertically */
-  justify-content: center; /* Center horizontally */
+  line-height: 1.2;
+  display: inline-block; /* Change from flex to inline-block */
+  vertical-align: middle; /* Align with other inline elements */
 }
 
 .player-name-display {
@@ -83,6 +83,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100px;
+  vertical-align: middle; /* Align with other inline elements */
 }
 
 .connection-status {
@@ -779,57 +780,55 @@ input:disabled {
 
 .lobby-item {
   display: flex;
-  justify-content: space-between;
-  align-items: center; /* This centers everything vertically */
+  align-items: center; /* Vertically center all items */
+  justify-content: space-between; /* Space between left content and button */
   background: rgba(13, 17, 28, 0.8);
   border-radius: 12px;
-  padding: 12px 14px; /* Adjusted vertical padding */
+  padding: 12px 14px;
   border: 1px solid rgba(106, 139, 255, 0.2);
   transition: all 0.2s;
-  min-height: 68px; /* Slightly reduced for better balance */
+  min-height: 50px; /* Reduced height for single line */
 }
 
 .lobby-info {
   flex: 1;
   min-width: 0;
-  padding-right: 10px;
   display: flex;
-  flex-direction: column;
-  justify-content: center; /* This centers the content vertically */
-  height: 100%; /* Take full height of parent */
+  align-items: center; /* Align lobby code, host, and player count horizontally */
+  gap: 12px; /* Space between lobby code and host/player count */
 }
 
 .lobby-code {
-  font-family: "Segoe UI", system-ui, sans-serif;
+  font-family: "Segoe UI", system-ui, sans-serif; /* Change font */
   font-size: 16px;
   font-weight: 600;
   color: #6a8bff;
-  margin-bottom: 4px;
   letter-spacing: 0.5px;
-  line-height: 1.2; /* Consistent line height */
+  flex-shrink: 0; /* Don't shrink */
+  min-width: 50px; /* Fixed width for lobby code */
 }
 
 .lobby-details {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
-  line-height: 1.2; /* Consistent line height */
-  margin-top: 2px;
+  flex: 1; /* Take remaining space */
+  min-width: 0; /* Allow shrinking */
 }
 
 .lobby-host {
-  font-size: 12px;
+  font-size: 13px;
   color: #95a5a6;
   display: flex;
   align-items: center;
   gap: 4px;
+  flex-shrink: 0;
 }
 
 .lobby-host .host-label {
   color: #7f8c8d;
   font-weight: 500;
-  white-space: nowrap;
 }
 
 .lobby-host .host-name {
@@ -843,15 +842,17 @@ input:disabled {
 
 .lobby-separator {
   color: #7f8c8d;
-  font-size: 10px;
+  font-size: 12px;
+  flex-shrink: 0;
 }
 
 .lobby-stats {
-  font-size: 11px;
+  font-size: 12px;
   color: #95a5a6;
   display: flex;
   align-items: center;
   gap: 4px;
+  flex-shrink: 0;
 }
 
 .player-count {
@@ -859,7 +860,6 @@ input:disabled {
   align-items: center;
   gap: 4px;
   font-weight: 500;
-  white-space: nowrap;
 }
 
 .join-lobby-btn {
@@ -867,18 +867,16 @@ input:disabled {
   color: white;
   border: none;
   border-radius: 10px;
-  padding: 8px 16px;
+  padding: 6px 14px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  min-width: 70px;
-  height: 36px;
+  min-width: 60px;
+  height: 32px;
   transition: all 0.2s;
   flex-shrink: 0;
   box-shadow: 0 4px 8px rgba(106, 139, 255, 0.2);
-  display: flex;
-  align-items: center; /* Center text vertically */
-  justify-content: center; /* Center text horizontally */
+  font-family: "Segoe UI", system-ui, sans-serif; /* Change font */
 }
 
 .join-lobby-btn:hover {
@@ -946,4 +944,35 @@ input:disabled {
   .round {
     min-height: 100px;
   }
+}
+
+/* Fixed exit button below header */
+#exitLobby {
+  position: fixed;
+  top: 60px; /* Below the header */
+  right: 14px;
+  background: linear-gradient(135deg, #e74c3c, #c0392b);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 40px;
+  height: 26px;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+  display: none; /* Initially hidden */
+}
+
+#exitLobby:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ff4d4d, #e74c3c);
+  box-shadow: 0 8px 20px rgba(231, 76, 60, 0.4);
+  transform: translateY(-1px);
 }
