@@ -891,11 +891,6 @@ wss.on('connection', (ws, req) => {
             // Ignore
           }
           
-          // FIX #4: Mark client as no longer in a lobby
-          ws.inLobby = false;
-          lobbyId = null;
-          player = null;
-          
           // FIX: Broadcast updated lobby list when player exits
           broadcastLobbyList();
         }
