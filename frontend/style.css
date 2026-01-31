@@ -37,7 +37,7 @@ body {
   height: 100%;
 }
 
-.lobby-info {
+.gameHeader .lobby-info {
   display: flex;
   align-items: center;
   gap: 12px;
