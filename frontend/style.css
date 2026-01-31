@@ -49,18 +49,25 @@ body {
 .lobby-code-container {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   min-width: 0;
   flex: 1;
+  height: 100%;
 }
 
 .lobby-code {
   font-family: monospace;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: normal;
+  height: 100%;
+  min-height: 34px;
   font-size: 16px;
   font-weight: bold;
   background: rgba(106, 139, 255, 0.1);
   padding: 4px 8px;
-  line-height: 1;
   border-radius: 6px;
   border: 1px solid #6a8bff;
   color: #6a8bff;
