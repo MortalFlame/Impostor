@@ -787,7 +787,7 @@ input:disabled {
   padding-right: 10px;
 }
 
-.lobby-code {
+.lobby-item .lobby-code {
   font-family: monospace, system-ui, sans-serif;
   font-size: 16px;
   font-weight: 600;
