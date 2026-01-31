@@ -204,7 +204,7 @@ function startTurnTimerAnimation(turnEndsAt) {
   
   currentTurnEndsAt = turnEndsAt;
   
-  if (!isMyTurn) {
+  if (!isMyTurn || isSpectator) {
     turnTimerEl.classList.add('hidden');
     return;
   }
@@ -219,13 +219,11 @@ function startTurnTimerAnimation(turnEndsAt) {
       // Time's up
       stopTurnTimerAnimation();
       turnTimerEl.classList.add('hidden');
-      if (!isSpectator && submit.disabled === false) {
-        turnEl.textContent = 'Time expired! Waiting for next player...';
-      }
+      turnEl.textContent = 'Time expired! Waiting for next player...';
       return;
     }
     
-    // Update circular timer - use actual duration
+    // Update circular timer
     const circumference = 2 * Math.PI * 18;
     const totalDuration = 30000; // Fixed 30-second turns
     const progress = (remainingMs / totalDuration) * 100;
@@ -233,6 +231,9 @@ function startTurnTimerAnimation(turnEndsAt) {
     
     updateTimerColor(timeLeftSeconds);
     timerProgress.style.strokeDashoffset = offset;
+    
+    // Update timer text
+    timerText.textContent = timeLeftSeconds;
     
     // Continue animation
     timerAnimationFrame = requestAnimationFrame(animateTimer);
