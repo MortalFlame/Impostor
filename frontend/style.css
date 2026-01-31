@@ -760,10 +760,7 @@ input:disabled {
 .lobby-list {
   display: flex;
   flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-  padding: 14px;
-  min-height: 80px;
+  gap: 12px;
 }
 
 /* The container for the whole card */
