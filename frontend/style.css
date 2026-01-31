@@ -783,7 +783,8 @@ input:disabled {
   flex: 1;
   min-width: 0;
   margin-right: 10px;
-  align-items: center;
+  // align-items: center;
+  text-align: center;
 }
 
 .role-results-item .player-role {
