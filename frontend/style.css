@@ -763,18 +763,40 @@ input:disabled {
   gap: 12px;
 }
 
-/* The container for the whole card */
+/* 1. The Container (Horizontal) */
 .lobby-item {
-  display: flex;
-  flex-direction: row;      /* Horizontal: Info on left, Button on right */
+  display: flex !important;
+  flex-direction: row !important; /* Forces Text and Button to be side-by-side */
   justify-content: space-between;
-  align-items: center;      /* Vertically centers the button with the text */
+  align-items: center;            /* Vertically centers the button with the text */
   background: rgba(13, 17, 28, 0.8);
   border-radius: 12px;
   padding: 14px;
   border: 1px solid rgba(106, 139, 255, 0.2);
-  min-height: 80px;
+  margin-bottom: 12px;
+  min-height: 85px;
+  width: 100%;                   /* Ensure it spans the full width of the card */
 }
+
+/* 2. The Text Stack (Vertical) */
+.lobby-list .lobby-item .lobby-info {
+  display: flex !important;
+  flex-direction: column !important; /* Stacks Code, Host, and Stats */
+  align-items: flex-start;           /* Keeps text left-aligned */
+  justify-content: center;
+  flex: 1;                           /* Takes up all room to push button to the right */
+  gap: 4px;
+  padding: 0;
+  margin: 0;
+}
+
+/* 3. The Button (Stays on the right) */
+.join-lobby-btn {
+  align-self: center;                /* Keeps button centered vertically */
+  margin-left: 10px;
+  flex-shrink: 0;                    /* Prevents the button from squishing */
+}
+
 
 .lobby-item:hover {
   background: rgba(13, 17, 28, 1);
@@ -782,19 +804,6 @@ input:disabled {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
-
-/* The text stack inside the card */
-.lobby-item .lobby-info {
-  display: flex;
-  flex-direction: column;   /* Stacks Code, Host, and Stats vertically */
-  align-items: flex-start;  /* Align text to the left */
-  justify-content: center;
-  gap: 4px;
-  flex: 1;
-}
-
-
-
 
 .lobby-info {
   display: flex;
@@ -854,22 +863,6 @@ input:disabled {
   align-items: center;
   gap: 4px;
   font-weight: 500;
-}
-
-.join-lobby-btn {
-  background: linear-gradient(135deg, #6a8bff, #8a6aff);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  min-width: 70px;
-  height: 36px;
-  transition: all 0.2s;
-  flex-shrink: 0;
-  box-shadow: 0 4px 8px rgba(106, 139, 255, 0.2);
 }
 
 .join-lobby-btn:hover {
