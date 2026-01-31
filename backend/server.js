@@ -1200,7 +1200,11 @@ wss.on('connection', (ws, req) => {
     } else {
       // Check if name is already taken in this lobby
       const allNames = [...lobby.players, ...lobby.spectators].map(p => p.name);
-      let uniqueName = msg.name.trim();
+      // SANITIZE: Remove HTML tags and limit length
+let uniqueName = String(msg.name)
+  .replace(/[<>]/g, '') // Remove < and >
+  .substring(0, 20)     // Limit to 20 characters
+  .trim();
       
       // If name is taken, make it unique
       if (isNameTakenInLobby(lobby, uniqueName)) {
