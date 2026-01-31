@@ -222,7 +222,7 @@ body {
   min-width: 0;
   display: flex;           /* Add this */
   align-items: center;     /* Add this */
-  gap: 50px;
+  gap: 20px;
   text-transform: capitalize;
 }
 
@@ -783,6 +783,7 @@ input:disabled {
   flex: 1;
   min-width: 0;
   margin-right: 10px;
+  align-items: center;
 }
 
 .role-results-item .player-role {
