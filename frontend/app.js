@@ -329,7 +329,7 @@ function updateLobbyList(lobbies) {
     let lobbiesHtml = `
       <div class="lobby-list-header">
         <h3>Available Lobbies (${lobbies.length})</h3>
-        <button id="refreshLobbies" class="refresh-btn">🔄</button>
+        <button id="refreshLobbies" class="refresh-btn">↻</button>
       </div>
       <div class="lobby-list">
     `;
@@ -347,7 +347,7 @@ function updateLobbyList(lobbies) {
               <span class="host-name" title="${lobby.host}">${lobby.host}</span>
             </div>
             <div class="lobby-stats">
-              <span class="player-count">👥 ${playerStatus}</span>
+              <span class="player-count">P: ${playerStatus}</span>
             </div>
           </div>
           <button class="join-lobby-btn" data-lobby-id="${lobby.id}">
