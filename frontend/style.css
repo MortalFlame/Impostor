@@ -37,13 +37,15 @@ body {
   height: 100%;
 }
 
-.lobby-info {
+/* Specific to the top bar only */
+.game-header .lobby-info {
   display: flex;
-  align-items: center;
+  flex-direction: row;      /* Force side-by-side */
+  align-items: center;      /* Vertically align dot and text */
   gap: 12px;
   flex: 1;
-  min-width: 0;
 }
+
 
 .lobby-code-container {
   display: flex;
@@ -764,17 +766,17 @@ input:disabled {
   min-height: 80px;
 }
 
+/* The container for the whole card */
 .lobby-item {
   display: flex;
-  flex-direction: row;
+  flex-direction: row;      /* Horizontal: Info on left, Button on right */
   justify-content: space-between;
-  align-items: center;
+  align-items: center;      /* Vertically centers the button with the text */
   background: rgba(13, 17, 28, 0.8);
   border-radius: 12px;
   padding: 14px;
   border: 1px solid rgba(106, 139, 255, 0.2);
-  transition: all 0.2s;
-  min-height: 70px;
+  min-height: 80px;
 }
 
 .lobby-item:hover {
@@ -783,6 +785,19 @@ input:disabled {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
+
+/* The text stack inside the card */
+.lobby-item .lobby-info {
+  display: flex;
+  flex-direction: column;   /* Stacks Code, Host, and Stats vertically */
+  align-items: flex-start;  /* Align text to the left */
+  justify-content: center;
+  gap: 4px;
+  flex: 1;
+}
+
+
+
 
 .lobby-info {
   display: flex;
