@@ -219,6 +219,10 @@ body {
 .lobby-info {
   flex: 1;
   min-width: 0;
+  display: flex;           /* Add this */
+  align-items: center;     /* Add this */
+  gap: 50px;
+  text-transform: capitalize;
 }
 
 .lobby-code {
@@ -226,7 +230,8 @@ body {
   font-weight: bold;
   font-size: 16px;
   color: #6a8bff;
-  margin-bottom: 4px;
+  margin-bottom: 0px;
+  flex-shrink: 0;
 }
 
 .lobby-host {
@@ -235,7 +240,8 @@ body {
   gap: 6px;
   font-size: 13px;
   color: #95a5a6;
-  margin-bottom: 4px;
+  margin-bottom: 0;       /* Changed from 4px */
+  flex-shrink: 1; 
 }
 
 .host-label {
@@ -256,6 +262,8 @@ body {
   justify-content: space-between;
   font-size: 12px;
   color: #7f8c8d;
+  margin-bottom: 0;       /* Add this */
+  flex-shrink: 0; 
 }
 
 .player-count {
