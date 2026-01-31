@@ -321,7 +321,7 @@ function updateLobbyList(lobbies) {
     lobbyListContainer.innerHTML = `
       <div class="lobby-list-header">
         <h3>Available Lobbies</h3>
-        <button id="refreshLobbies" class="refresh-btn">🔄</button>
+        <button id="refreshLobbies" class="refresh-btn">↻</button>
       </div>
       <div class="no-lobbies">No lobbies available. Create one!</div>
     `;
