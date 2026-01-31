@@ -39,13 +39,10 @@ body {
 
 .lobby-info {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
   align-items: center;
-  gap: 2px;
+  gap: 12px;
   flex: 1;
   min-width: 0;
-  padding-right: 12px;
 }
 
 .lobby-code-container {
@@ -760,8 +757,11 @@ input:disabled {
 
 .lobby-list {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px;
+  min-height: 80px;
 }
 
 .lobby-item {
@@ -785,12 +785,14 @@ input:disabled {
 }
 
 .lobby-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 2 px;
   flex: 1;
   min-width: 0;
-  padding-right: 10px;
-  display: flex;            /* Add this */
-  flex-direction: column;   /* Add this */
-  justify-content: center;  /* Add this */
+  padding-right: 12px;
 }
 
 }
