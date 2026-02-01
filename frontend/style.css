@@ -151,10 +151,10 @@ body {
   max-height: 200px !important;
   height: auto;
   overflow: hidden;
-  margin-top: 20px;
+  margin-top: 10px;
   background: rgba(13, 17, 28, 0.6);
   border-radius: 14px;
-  padding: 14px;
+  padding: 10px;
   border: 1px solid rgba(106, 139, 255, 0.2);
 }
 
@@ -163,7 +163,7 @@ body {
   justify-content: space-between;
   align-items: center;
   margin-top: 20px;
-  margin-bottom: 12px;
+  margin-bottom: 6px;
   font-family: "Segoe UI", system-ui, sans-serif;
 }
 
@@ -191,14 +191,14 @@ body {
 }
 
 .no-lobbies {
-  min-height: 80px;
+  min-height: 60px;
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
   color: #95a5a6;
   font-style: italic;
-  /* padding: 20px 0;*/
+  padding: 20px 0;
 }
 
 .lobby-list {
