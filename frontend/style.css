@@ -147,7 +147,7 @@ body {
 
 /* Lobby List Styles */
 .lobby-list-container {
-  min-height: 200px !important;
+  min-height: 140px !important;
   height: auto;
   overflow: hidden;
   margin-top: 20px;
