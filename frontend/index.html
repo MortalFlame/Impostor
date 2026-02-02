@@ -48,10 +48,16 @@
         </button>
       </div>
       
-      <!-- Impostor Guess Option Toggle (only for host) -->
+      <!-- Impostor Guess Option Toggle -->
       <div id="impostorGuessToggle" class="impostor-guess-toggle" style="display: none;">
-        <input type="checkbox" id="impostorGuessOption" onchange="toggleImpostorGuessOption()">
-        <label for="impostorGuessOption">Impostor gets last chance to guess if voted out</label>
+        <label class="switch">
+          <input type="checkbox" id="impostorGuessOption" onchange="toggleImpostorGuessOption()">
+          <span class="slider"></span>
+        </label>
+        <label for="impostorGuessOption" class="toggle-label" onclick="showImpostorGuessInfo()">
+          Impostor last chance
+          <span class="info-icon" title="Click for more info">ⓘ</span>
+        </label>
       </div>
       
       <button id="start" class="button-base" disabled>Start Game</button>
