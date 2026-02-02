@@ -1062,6 +1062,7 @@ function connect() {
             restart.style.opacity = '1';
             // FIX: Reset spectatorWantsToJoin when game starts for spectators
             spectatorWantsToJoin = false;
+            spectatorHasClickedRestart = false;
           } else {
             restart.innerText = 'Restart Game';
             restart.classList.add('hidden');
@@ -1262,7 +1263,8 @@ function connect() {
           
           if (isSpectator) {
             restart.classList.remove('hidden');
-            if (spectatorWantsToJoin) {
+            // FIX: Spectator button should remain "Joining next game..." if they already clicked
+            if (spectatorWantsToJoin || spectatorHasClickedRestart) {
               restart.innerText = 'Joining next game...';
               restart.disabled = true;
               restart.style.opacity = '0.7';
@@ -1271,7 +1273,6 @@ function connect() {
               restart.disabled = false;
               restart.style.opacity = '1';
             }
-            spectatorHasClickedRestart = false;
           } else if (myRoleInfo) {
             restart.classList.remove('hidden');
             restart.innerText = 'Restart Game';
@@ -1372,7 +1373,8 @@ function connect() {
           
           if (isSpectator) {
             restart.classList.remove('hidden');
-            if (spectatorWantsToJoin) {
+            // FIX: Spectator button should remain "Joining next game..." if they already clicked
+            if (spectatorWantsToJoin || spectatorHasClickedRestart) {
               restart.innerText = 'Joining next game...';
               restart.disabled = true;
               restart.style.opacity = '0.7';
@@ -1381,7 +1383,6 @@ function connect() {
               restart.disabled = false;
               restart.style.opacity = '1';
             }
-            spectatorHasClickedRestart = false;
           } else if (myRoleInfo) {
             restart.classList.remove('hidden');
             restart.innerText = 'Restart Game';
@@ -1401,7 +1402,13 @@ function connect() {
 
         if (d.type === 'restartUpdate') {
           if (d.isSpectator) {
-            if (d.wantsToJoin || d.status === 'joining') {
+            // FIX: Keep spectator button disabled and in "Joining next game..." state if they've already clicked
+            if (spectatorHasClickedRestart) {
+              restart.innerText = `Joining next game... (${d.readyCount}/${d.totalPlayers} players ready)`;
+              restart.disabled = true;
+              restart.style.opacity = '0.7';
+              spectatorWantsToJoin = true;
+            } else if (d.wantsToJoin || d.status === 'joining') {
               spectatorWantsToJoin = true;
               if (spectatorHasClickedRestart) {
                 restart.innerText = `Joining next game... (${d.readyCount}/${d.totalPlayers} players ready)`;
