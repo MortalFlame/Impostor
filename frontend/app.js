@@ -402,16 +402,26 @@ function updateLobbyList(lobbies) {
       const impostorGuessBadge = lobby.impostorGuessOption ? 
         '<span class="impostor-guess-badge" title="Impostor gets last chance to guess">🔍</span>' : '';
       
+      // Add phase indicator
+      let phaseIndicator = '';
+      if (lobby.phase === 'lobby') {
+        phaseIndicator = '<span class="phase-indicator lobby-phase">Waiting</span>';
+      } else if (lobby.phase === 'results') {
+        phaseIndicator = '<span class="phase-indicator results-phase">Results</span>';
+      } else {
+        phaseIndicator = '<span class="phase-indicator in-game-phase">In Game</span>';
+      }
+      
       lobbiesHtml += `
         <div class="lobby-item" data-lobby-id="${lobby.id}">
           <div class="lobby-info">
             <div class="lobby-code">${lobby.id} ${impostorGuessBadge}</div>
             <div class="lobby-host">
-              
               <span class="host-name" title="${lobby.host}">${lobby.host}</span>
             </div>
             <div class="lobby-stats">
               <span class="player-count">P: ${playerStatus}</span>
+              ${phaseIndicator}
             </div>
           </div>
           <button class="join-lobby-btn" data-lobby-id="${lobby.id}">
@@ -984,19 +994,8 @@ function connect() {
             lobbyListContainer.style.display = 'none';
           }
           
-          // Update impostor guess option toggle if owner
-          const impostorGuessToggle = document.getElementById('impostorGuessToggle');
-          if (impostorGuessToggle) {
-            if (isOwner && !isSpectator) {
-              impostorGuessToggle.style.display = 'flex';
-              const checkbox = impostorGuessToggle.querySelector('input[type="checkbox"]');
-              if (checkbox) {
-                checkbox.checked = impostorGuessOption;
-              }
-            } else {
-              impostorGuessToggle.style.display = 'none';
-            }
-          }
+          // Update impostor guess option toggle
+          updateImpostorGuessToggle();
           
           // FIX #3: Stop auto-refresh when assigned to a lobby
           stopLobbyListAutoRefresh();
@@ -1016,19 +1015,8 @@ function connect() {
           
           exitLobbyBtn.style.display = 'block';
           
-          // Update impostor guess option toggle if owner
-          const impostorGuessToggle = document.getElementById('impostorGuessToggle');
-          if (impostorGuessToggle) {
-            if (isOwnerCheck && !isSpectator) {
-              impostorGuessToggle.style.display = 'flex';
-              const checkbox = impostorGuessToggle.querySelector('input[type="checkbox"]');
-              if (checkbox) {
-                checkbox.checked = impostorGuessOption;
-              }
-            } else {
-              impostorGuessToggle.style.display = 'none';
-            }
-          }
+          // Update impostor guess option toggle
+          updateImpostorGuessToggle();
           
           if (d.phase && d.phase !== 'lobby') {
             players.innerHTML += `<br><i style="color:#f39c12">Game in progress: ${d.phase}</i>`;
@@ -1072,6 +1060,8 @@ function connect() {
             restart.classList.remove('hidden');
             restart.disabled = false;
             restart.style.opacity = '1';
+            // FIX: Reset spectatorWantsToJoin when game starts for spectators
+            spectatorWantsToJoin = false;
           } else {
             restart.innerText = 'Restart Game';
             restart.classList.add('hidden');
@@ -1130,7 +1120,7 @@ function connect() {
             turnEl.textContent = isSpectator ? 'Spectating - Voting Starting...' : 'Round Complete - Voting Starting...';
             submit.disabled = true;
             input.value = '';
-            input.placeholder = isSpectator ? 'Spectating voting...' : 'Get ready to vote...';
+            input.placeholder = isSpectator ? 'Spectating votes...' : 'Get ready to vote...';
             isMyTurn = false;
             currentTurnEndsAt = null;
           } else {
@@ -1412,6 +1402,7 @@ function connect() {
         if (d.type === 'restartUpdate') {
           if (d.isSpectator) {
             if (d.wantsToJoin || d.status === 'joining') {
+              spectatorWantsToJoin = true;
               if (spectatorHasClickedRestart) {
                 restart.innerText = `Joining next game... (${d.readyCount}/${d.totalPlayers} players ready)`;
                 restart.disabled = true;
@@ -1422,6 +1413,7 @@ function connect() {
                 restart.style.opacity = '1';
               }
             } else {
+              spectatorWantsToJoin = false;
               restart.innerText = 'Join Next Game';
               restart.disabled = false;
               restart.style.opacity = '1';
@@ -1551,6 +1543,39 @@ function toggleImpostorGuessOption() {
     type: 'toggleImpostorGuess', 
     enabled: checkbox.checked 
   }));
+}
+
+function updateImpostorGuessToggle() {
+  const impostorGuessToggle = document.getElementById('impostorGuessToggle');
+  if (!impostorGuessToggle) return;
+  
+  if (isSpectator) {
+    impostorGuessToggle.style.display = 'none';
+    return;
+  }
+  
+  impostorGuessToggle.style.display = 'flex';
+  const checkbox = impostorGuessToggle.querySelector('input[type="checkbox"]');
+  const label = impostorGuessToggle.querySelector('.toggle-label');
+  
+  if (checkbox && label) {
+    checkbox.checked = impostorGuessOption;
+    checkbox.disabled = !isOwner;
+    
+    if (isOwner) {
+      label.style.color = '#fff';
+      label.style.cursor = 'pointer';
+      checkbox.style.cursor = 'pointer';
+    } else {
+      label.style.color = '#95a5a6';
+      label.style.cursor = 'not-allowed';
+      checkbox.style.cursor = 'not-allowed';
+    }
+  }
+}
+
+function showImpostorGuessInfo() {
+  alert('When enabled, if the impostor is voted out, they get a 30-second last chance to guess the secret word. If they guess correctly, they win! Otherwise, civilians win.');
 }
 
 join.onclick = () => joinAsPlayer(false);
