@@ -47,6 +47,13 @@
           <span class="spectate-icon">👁️</span>
         </button>
       </div>
+      
+      <!-- Impostor Guess Option Toggle (only for host) -->
+      <div id="impostorGuessToggle" class="impostor-guess-toggle" style="display: none;">
+        <input type="checkbox" id="impostorGuessOption" onchange="toggleImpostorGuessOption()">
+        <label for="impostorGuessOption">Impostor gets last chance to guess if voted out</label>
+      </div>
+      
       <button id="start" class="button-base" disabled>Start Game</button>
 
       <div id="players" class="players"></div>
