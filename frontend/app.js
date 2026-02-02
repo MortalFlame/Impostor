@@ -101,6 +101,13 @@ let lastServerId = localStorage.getItem('lastServerId');
 // Lobby list auto-refresh
 let lobbyListRefreshInterval = null;
 
+// Impostor guess variables
+let impostorGuessTimer = null;
+let impostorGuessEndsAt = null;
+let isImpostor = false;
+let isOwner = false;
+let impostorGuessOption = false;
+
 const DEBUG_MODE = false;
 
 function safeLog(...args) {
@@ -256,6 +263,60 @@ function stopTurnTimer() {
   stopTurnTimerAnimation();
 }
 
+// Impostor guess timer functions
+function startImpostorGuessTimerAnimation(guessEndsAt) {
+  stopImpostorGuessTimerAnimation();
+  
+  impostorGuessEndsAt = guessEndsAt;
+  
+  if (!isImpostor) {
+    turnTimerEl.classList.add('hidden');
+    return;
+  }
+  
+  turnTimerEl.classList.remove('hidden');
+  
+  function animateImpostorGuessTimer() {
+    const remainingMs = Math.max(0, impostorGuessEndsAt - Date.now());
+    const timeLeftSeconds = Math.ceil(remainingMs / 1000);
+    
+    if (remainingMs <= 0) {
+      // Time's up
+      stopImpostorGuessTimerAnimation();
+      turnTimerEl.classList.add('hidden');
+      turnEl.textContent = 'Time expired! Impostor failed to guess.';
+      return;
+    }
+    
+    // Update circular timer
+    const circumference = 2 * Math.PI * 18;
+    const totalDuration = 30000; // Fixed 30-second timer
+    const progress = (remainingMs / totalDuration) * 100;
+    const offset = circumference - (progress / 100) * circumference;
+    
+    updateTimerColor(timeLeftSeconds);
+    timerProgress.style.strokeDashoffset = offset;
+    
+    // Update timer text
+    timerText.textContent = timeLeftSeconds;
+    
+    // Continue animation
+    impostorGuessTimer = requestAnimationFrame(animateImpostorGuessTimer);
+  }
+  
+  // Start animation
+  impostorGuessTimer = requestAnimationFrame(animateImpostorGuessTimer);
+}
+
+function stopImpostorGuessTimerAnimation() {
+  if (impostorGuessTimer) {
+    cancelAnimationFrame(impostorGuessTimer);
+    impostorGuessTimer = null;
+  }
+  impostorGuessEndsAt = null;
+  turnTimerEl.classList.add('hidden');
+}
+
 function updatePlayerList(playersData, spectatorsData = []) {
   let playersHtml = '';
   
@@ -338,11 +399,13 @@ function updateLobbyList(lobbies) {
     lobbies.forEach(lobby => {
       const totalPlayers = lobby.playerCount + lobby.spectatorCount;
       const playerStatus = `${lobby.playerCount}`;
+      const impostorGuessBadge = lobby.impostorGuessOption ? 
+        '<span class="impostor-guess-badge" title="Impostor gets last chance to guess">🔍</span>' : '';
       
       lobbiesHtml += `
         <div class="lobby-item" data-lobby-id="${lobby.id}">
           <div class="lobby-info">
-            <div class="lobby-code">${lobby.id}</div>
+            <div class="lobby-code">${lobby.id} ${impostorGuessBadge}</div>
             <div class="lobby-host">
               
               <span class="host-name" title="${lobby.host}">${lobby.host}</span>
@@ -432,6 +495,14 @@ document.addEventListener('visibilitychange', () => {
   } else if (document.hidden && timerAnimationFrame) {
     cancelAnimationFrame(timerAnimationFrame);
     timerAnimationFrame = null;
+  }
+  
+  // Also handle impostor guess timer
+  if (!document.hidden && impostorGuessEndsAt && isImpostor) {
+    startImpostorGuessTimerAnimation(impostorGuessEndsAt);
+  } else if (document.hidden && impostorGuessTimer) {
+    cancelAnimationFrame(impostorGuessTimer);
+    impostorGuessTimer = null;
   }
   
   // Reconnection logic for visibility changes
@@ -539,9 +610,12 @@ function exitLobby() {
   spectatorHasClickedRestart = false;
   myPlayerName = '';
   joinType = 'browseLobbies';
+  isOwner = false;
+  impostorGuessOption = false;
   updateConnectionStatus('disconnected');
   
   stopTurnTimerAnimation();
+  stopImpostorGuessTimerAnimation();
   
   if (window.pingInterval) {
     clearInterval(window.pingInterval);
@@ -605,9 +679,12 @@ function resetToLobbyScreen() {
   spectatorHasClickedRestart = false;
   myPlayerName = '';
   joinType = 'browseLobbies';
+  isOwner = false;
+  impostorGuessOption = false;
   updateConnectionStatus('disconnected');
   
   stopTurnTimerAnimation();
+  stopImpostorGuessTimerAnimation();
   
   if (window.pingInterval) {
     clearInterval(window.pingInterval);
@@ -884,6 +961,8 @@ function connect() {
           currentLobbyId = d.lobbyId;
           isSpectator = d.isSpectator || false;
           myPlayerName = d.yourName || d.playerName || nickname.value.trim();
+          isOwner = d.isOwner || false;
+          impostorGuessOption = d.impostorGuessOption || false;
           
           lobbyCodeDisplay.textContent = d.lobbyId;
           
@@ -905,6 +984,20 @@ function connect() {
             lobbyListContainer.style.display = 'none';
           }
           
+          // Update impostor guess option toggle if owner
+          const impostorGuessToggle = document.getElementById('impostorGuessToggle');
+          if (impostorGuessToggle) {
+            if (isOwner && !isSpectator) {
+              impostorGuessToggle.style.display = 'flex';
+              const checkbox = impostorGuessToggle.querySelector('input[type="checkbox"]');
+              if (checkbox) {
+                checkbox.checked = impostorGuessOption;
+              }
+            } else {
+              impostorGuessToggle.style.display = 'none';
+            }
+          }
+          
           // FIX #3: Stop auto-refresh when assigned to a lobby
           stopLobbyListAutoRefresh();
         }
@@ -912,13 +1005,30 @@ function connect() {
         if (d.type === 'lobbyUpdate') {
           updatePlayerList(d.players, d.spectators);
           
-          const isOwner = d.owner === playerId;
-          start.disabled = isSpectator || d.players.length < 3 || !isOwner;
+          const isOwnerCheck = d.owner === playerId;
+          isOwner = isOwnerCheck;
+          impostorGuessOption = d.impostorGuessOption || false;
+          
+          start.disabled = isSpectator || d.players.length < 3 || !isOwnerCheck;
           
           spectate.style.display = isSpectator ? 'none' : 'block';
           join.style.display = isSpectator ? 'none' : 'block';
           
           exitLobbyBtn.style.display = 'block';
+          
+          // Update impostor guess option toggle if owner
+          const impostorGuessToggle = document.getElementById('impostorGuessToggle');
+          if (impostorGuessToggle) {
+            if (isOwnerCheck && !isSpectator) {
+              impostorGuessToggle.style.display = 'flex';
+              const checkbox = impostorGuessToggle.querySelector('input[type="checkbox"]');
+              if (checkbox) {
+                checkbox.checked = impostorGuessOption;
+              }
+            } else {
+              impostorGuessToggle.style.display = 'none';
+            }
+          }
           
           if (d.phase && d.phase !== 'lobby') {
             players.innerHTML += `<br><i style="color:#f39c12">Game in progress: ${d.phase}</i>`;
@@ -988,14 +1098,17 @@ function connect() {
             if (d.hint) {
               wordEl.innerHTML += `<div><strong>Hint:</strong> ${capitalize(d.hint)}</div>`;
             }
+            isImpostor = false;
           } else if (d.role === 'civilian') {
             roleBack.className = `role-back ${d.role}`;
             roleText.innerHTML = '<span style="color:#2ecc71">Civilian</span>';
             wordEl.textContent = `Word: ${capitalize(d.word)}`;
+            isImpostor = false;
           } else if (d.role === 'impostor') {
             roleBack.className = `role-back ${d.role}`;
             roleText.innerHTML = '<span style="color:#e74c3c">Impostor</span>';
             wordEl.textContent = `Hint: ${capitalize(d.word)}`;
+            isImpostor = true;
           }
         }
 
@@ -1011,6 +1124,7 @@ function connect() {
           round2El.innerHTML = d.round2.map(formatWord).join('<br>');
           
           stopTurnTimerAnimation();
+          stopImpostorGuessTimerAnimation();
           
           if (d.currentPlayer === 'Voting Phase') {
             turnEl.textContent = isSpectator ? 'Spectating - Voting Starting...' : 'Round Complete - Voting Starting...';
@@ -1045,6 +1159,7 @@ function connect() {
 
         if (d.type === 'startVoting') {
           stopTurnTimerAnimation();
+          stopImpostorGuessTimerAnimation();
           
           turnEl.textContent = isSpectator ? 'Spectating - Vote for the Impostor!' : 'Vote for the Impostor!';
           input.value = '';
@@ -1065,10 +1180,50 @@ function connect() {
           }
         }
 
-        if (d.type === 'gameEndEarly') {
+        if (d.type === 'impostorGuessPhase') {
           stopTurnTimerAnimation();
+          stopImpostorGuessTimerAnimation();
+          
           isMyTurn = false;
           currentTurnEndsAt = null;
+          
+          if (d.isImpostor) {
+            // We are the impostor and get to guess
+            turnEl.textContent = 'You were voted out! Guess the word to win!';
+            input.placeholder = 'Guess the word (30s)...';
+            input.disabled = false;
+            submit.disabled = false;
+            submit.textContent = 'Submit Guess';
+            submit.onclick = submitImpostorGuess;
+            
+            // Show the guess timer
+            if (d.guessEndsAt) {
+              startImpostorGuessTimerAnimation(d.guessEndsAt);
+            }
+            
+            voting.innerHTML = '<h3>Last Chance to Win!</h3>' +
+              '<p>You have 30 seconds to guess the secret word. If you guess correctly, you win!</p>';
+          } else {
+            // We are a civilian or spectator watching the impostor guess
+            turnEl.textContent = 'Impostor was voted out! They have 30 seconds to guess the word...';
+            input.placeholder = 'Waiting for impostor to guess...';
+            input.disabled = true;
+            submit.disabled = true;
+            
+            voting.innerHTML = '<h3>Impostor is Guessing</h3>' +
+              `<p>The impostor (${d.ejected}) has 30 seconds to guess the secret word.</p>` +
+              '<p>If they guess correctly, they win!</p>';
+          }
+          
+          results.innerHTML = '';
+        }
+
+        if (d.type === 'gameEndEarly') {
+          stopTurnTimerAnimation();
+          stopImpostorGuessTimerAnimation();
+          isMyTurn = false;
+          currentTurnEndsAt = null;
+          isImpostor = false;
           
           // FIXED: Don't show "Impostor Won" when impostor leaves
           const winnerColor = '#f39c12'; // Orange for neutral message
@@ -1146,8 +1301,14 @@ function connect() {
 
         if (d.type === 'gameEnd') {
           stopTurnTimerAnimation();
+          stopImpostorGuessTimerAnimation();
           isMyTurn = false;
           currentTurnEndsAt = null;
+          isImpostor = false;
+          
+          // Reset submit button to normal function
+          submit.textContent = 'Submit';
+          submit.onclick = submitWord;
           
           const winnerColor = d.winner === 'Civilians' ? '#2ecc71' : '#e74c3c';
           
@@ -1186,9 +1347,25 @@ function connect() {
           }
           votesHtml += '</div>';
           
+          // Add impostor guess result if applicable
+          let impostorGuessHtml = '';
+          if (d.impostorGuess !== undefined) {
+            const guessResult = d.impostorGuessCorrect ? 
+              `<span style="color:#2ecc71">Correct guess! The impostor wins!</span>` :
+              `<span style="color:#e74c3c">Wrong guess! The impostor said: "${d.impostorGuess}"</span>`;
+            
+            impostorGuessHtml = `
+              <div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; margin: 10px 0;">
+                <b>Impostor's Last Chance:</b><br>
+                ${guessResult}
+              </div>
+            `;
+          }
+          
           // UPDATED: Word and hint on same line with proper alignment
           results.innerHTML =
             `<h2 style="color:${winnerColor}; text-align:center">${d.winner} Won!</h2>` +
+            impostorGuessHtml +
             `<div class="word-hint-container">
               <div><b>Word:</b> ${capitalize(d.secretWord)}</div>
               <span class="word-hint-separator">|</span>
@@ -1314,6 +1491,7 @@ function connect() {
       }
       
       stopTurnTimerAnimation();
+      stopImpostorGuessTimerAnimation();
       
       if (event.code === 1000 || event.code === 1001) {
         updateConnectionStatus('disconnected', 'Disconnected');
@@ -1336,6 +1514,45 @@ function connect() {
   }
 }
 
+function submitImpostorGuess() {
+  if (!input.value.trim() || !isImpostor) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    showConnectionWarning('Connection lost. Please wait for reconnection...');
+    return;
+  }
+  
+  // Send the impostor's guess (non-case sensitive is handled server-side)
+  ws.send(JSON.stringify({ 
+    type: 'impostorGuess', 
+    guess: input.value.trim() 
+  }));
+  
+  input.value = '';
+  input.disabled = true;
+  submit.disabled = true;
+  submit.textContent = 'Guess Submitted';
+}
+
+function submitWord() {
+  if (!input.value.trim() || isSpectator) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    showConnectionWarning('Connection lost. Please wait for reconnection...');
+    return;
+  }
+  ws.send(JSON.stringify({ type: 'submitWord', word: input.value.trim() }));
+  input.value = '';
+}
+
+function toggleImpostorGuessOption() {
+  const checkbox = document.querySelector('#impostorGuessToggle input[type="checkbox"]');
+  if (!checkbox || !ws || ws.readyState !== WebSocket.OPEN) return;
+  
+  ws.send(JSON.stringify({ 
+    type: 'toggleImpostorGuess', 
+    enabled: checkbox.checked 
+  }));
+}
+
 join.onclick = () => joinAsPlayer(false);
 spectate.onclick = joinAsSpectator;
 exitLobbyBtn.onclick = exitLobby;
@@ -1348,15 +1565,7 @@ start.onclick = () => {
   ws.send(JSON.stringify({ type: 'startGame' }));
 };
 
-submit.onclick = () => {
-  if (!input.value.trim() || isSpectator) return;
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    showConnectionWarning('Connection lost. Please wait for reconnection...');
-    return;
-  }
-  ws.send(JSON.stringify({ type: 'submitWord', word: input.value.trim() }));
-  input.value = '';
-};
+submit.onclick = submitWord;
 
 restart.onclick = () => {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -1420,7 +1629,13 @@ lobbyId.addEventListener('keypress', (e) => {
 });
 
 input.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter' && !isSpectator) submit.click();
+  if (e.key === 'Enter') {
+    if (isImpostor && submit.onclick === submitImpostorGuess) {
+      submitImpostorGuess();
+    } else if (!isSpectator) {
+      submitWord();
+    }
+  }
 });
 
 // Page lifecycle events for Android/Chrome
