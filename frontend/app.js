@@ -107,6 +107,8 @@ let impostorGuessEndsAt = null;
 let isImpostor = false;
 let isOwner = false;
 let impostorGuessOption = false;
+let twoImpostorsOption = false; // NEW: Two impostors option
+let twoImpostorsMode = false; // NEW: Track if current game is in 2-impostor mode
 
 const DEBUG_MODE = false;
 
@@ -401,6 +403,8 @@ function updateLobbyList(lobbies) {
       const playerStatus = `${lobby.playerCount}`;
       const impostorGuessBadge = lobby.impostorGuessOption ? 
         '<span class="impostor-guess-badge" title="Impostor gets last chance to guess">🔍</span>' : '';
+      const twoImpostorsBadge = lobby.twoImpostorsOption ?
+        '<span class="two-impostors-badge" title="2 Impostors Mode">👥</span>' : '';
       
       // Add phase indicator
       let phaseIndicator = '';
@@ -415,7 +419,7 @@ function updateLobbyList(lobbies) {
       lobbiesHtml += `
         <div class="lobby-item" data-lobby-id="${lobby.id}">
           <div class="lobby-info">
-            <div class="lobby-code">${lobby.id} ${impostorGuessBadge}</div>
+            <div class="lobby-code">${lobby.id} ${impostorGuessBadge} ${twoImpostorsBadge}</div>
             <div class="lobby-host">
               <span class="host-name" title="${lobby.host}">${lobby.host}</span>
             </div>
@@ -622,6 +626,8 @@ function exitLobby() {
   joinType = 'browseLobbies';
   isOwner = false;
   impostorGuessOption = false;
+  twoImpostorsOption = false; // NEW: Reset two impostors option
+  twoImpostorsMode = false; // NEW: Reset two impostors mode
   updateConnectionStatus('disconnected');
   
   stopTurnTimerAnimation();
@@ -691,6 +697,8 @@ function resetToLobbyScreen() {
   joinType = 'browseLobbies';
   isOwner = false;
   impostorGuessOption = false;
+  twoImpostorsOption = false; // NEW: Reset two impostors option
+  twoImpostorsMode = false; // NEW: Reset two impostors mode
   updateConnectionStatus('disconnected');
   
   stopTurnTimerAnimation();
@@ -973,6 +981,7 @@ function connect() {
           myPlayerName = d.yourName || d.playerName || nickname.value.trim();
           isOwner = d.isOwner || false;
           impostorGuessOption = d.impostorGuessOption || false;
+          twoImpostorsOption = d.twoImpostorsOption || false; // NEW: Set two impostors option
           
           lobbyCodeDisplay.textContent = d.lobbyId;
           
@@ -996,6 +1005,7 @@ function connect() {
           
           // Update impostor guess option toggle
           updateImpostorGuessToggle();
+          updateTwoImpostorsToggle(); // NEW: Update two impostors toggle
           
           // FIX #3: Stop auto-refresh when assigned to a lobby
           stopLobbyListAutoRefresh();
@@ -1007,6 +1017,7 @@ function connect() {
           const isOwnerCheck = d.owner === playerId;
           isOwner = isOwnerCheck;
           impostorGuessOption = d.impostorGuessOption || false;
+          twoImpostorsOption = d.twoImpostorsOption || false; // NEW: Update two impostors option
           
           start.disabled = isSpectator || d.players.length < 3 || !isOwnerCheck;
           
@@ -1017,6 +1028,7 @@ function connect() {
           
           // Update impostor guess option toggle
           updateImpostorGuessToggle();
+          updateTwoImpostorsToggle(); // NEW: Update two impostors toggle
           
           if (d.phase && d.phase !== 'lobby') {
             players.innerHTML += `<br><i style="color:#f39c12">Game in progress: ${d.phase}</i>`;
@@ -1152,7 +1164,14 @@ function connect() {
           stopTurnTimerAnimation();
           stopImpostorGuessTimerAnimation();
           
-          turnEl.textContent = isSpectator ? 'Spectating - Vote for the Impostor!' : 'Vote for the Impostor!';
+          twoImpostorsMode = d.twoImpostorsMode || false; // NEW: Set voting mode
+          
+          if (twoImpostorsMode) {
+            turnEl.textContent = isSpectator ? 'Spectating - Vote for 2 Impostors!' : 'Vote for 2 Impostors! (Top 2 voted players will be ejected)';
+          } else {
+            turnEl.textContent = isSpectator ? 'Spectating - Vote for the Impostor!' : 'Vote for the Impostor!';
+          }
+          
           input.value = '';
           input.placeholder = isSpectator ? 'Spectating votes...' : 'Voting in progress...';
           submit.disabled = true;
@@ -1163,7 +1182,13 @@ function connect() {
             voting.innerHTML = '<h3>Spectating Votes</h3>' +
               d.players.map(p => `<div class="spectator-vote-btn">${p}</div>`).join('');
           } else {
-            voting.innerHTML = '<h3>Vote</h3>' +
+            // NEW: Show voting instructions for 2-impostor mode
+            let votingHeader = '<h3>Vote</h3>';
+            if (twoImpostorsMode) {
+              votingHeader += '<p style="color:#f39c12; font-size: 12px; margin-top: -5px; margin-bottom: 10px;">Vote for who you think is an impostor (2 players will be ejected)</p>';
+            }
+            
+            voting.innerHTML = votingHeader +
               d.players
                 .filter(p => p !== myPlayerName)
                 .map(p => `<button class="vote-btn" onclick="vote('${p}', this)">${p}</button>`)
@@ -1192,18 +1217,20 @@ function connect() {
               startImpostorGuessTimerAnimation(d.guessEndsAt);
             }
             
+            let ejectedText = Array.isArray(d.ejected) ? d.ejected.join(' and ') : d.ejected;
             voting.innerHTML = '<h3>Last Chance to Win!</h3>' +
-              '<p>You have 30 seconds to guess the secret word. If you guess correctly, you win!</p>';
+              `<p>You (${ejectedText}) have 30 seconds to guess the secret word. If you guess correctly, the impostors win!</p>`;
           } else {
             // We are a civilian or spectator watching the impostor guess
+            let ejectedText = Array.isArray(d.ejected) ? d.ejected.join(' and ') : d.ejected;
             turnEl.textContent = 'Impostor was voted out! They have 30 seconds to guess the word...';
             input.placeholder = 'Waiting for impostor to guess...';
             input.disabled = true;
             submit.disabled = true;
             
             voting.innerHTML = '<h3>Impostor is Guessing</h3>' +
-              `<p>The impostor (${d.ejected}) has 30 seconds to guess the secret word.</p>` +
-              '<p>If they guess correctly, they win!</p>';
+              `<p>The impostor (${ejectedText}) has 30 seconds to guess the secret word.</p>` +
+              '<p>If they guess correctly, the impostors win!</p>';
           }
           
           results.innerHTML = '';
@@ -1301,7 +1328,17 @@ function connect() {
           submit.textContent = 'Submit';
           submit.onclick = submitWord;
           
-          const winnerColor = d.winner === 'Civilians' ? '#2ecc71' : '#e74c3c';
+          // NEW: Determine winner color based on outcome
+          let winnerColor;
+          if (d.winner === 'Civilians') {
+            winnerColor = '#2ecc71';
+          } else if (d.winner === 'Impostors' || d.winner === 'Impostor') {
+            winnerColor = '#e74c3c';
+          } else if (d.winner === 'Draw') {
+            winnerColor = '#f39c12';
+          } else {
+            winnerColor = '#95a5a6';
+          }
           
           const myRoleInfo = d.roles.find(r => r.name === myPlayerName);
           
@@ -1338,11 +1375,25 @@ function connect() {
           }
           votesHtml += '</div>';
           
+          // Add ejected players display
+          let ejectedHtml = '';
+          if (d.ejected && d.ejected.length > 0) {
+            let ejectedText = '';
+            if (Array.isArray(d.ejected)) {
+              ejectedText = d.ejected.join(' and ');
+            } else {
+              ejectedText = d.ejected;
+            }
+            ejectedHtml = `<div style="margin: 10px 0; padding: 8px; background: rgba(231, 76, 60, 0.1); border-radius: 8px;">
+              <b>Ejected:</b> ${ejectedText}
+            </div>`;
+          }
+          
           // Add impostor guess result if applicable
           let impostorGuessHtml = '';
           if (d.impostorGuess !== undefined) {
             const guessResult = d.impostorGuessCorrect ? 
-              `<span style="color:#2ecc71">Correct guess! The impostor wins!</span>` :
+              `<span style="color:#2ecc71">Correct guess! The impostors win!</span>` :
               `<span style="color:#e74c3c">Wrong guess! The impostor said: "${d.impostorGuess}"</span>`;
             
             impostorGuessHtml = `
@@ -1353,10 +1404,20 @@ function connect() {
             `;
           }
           
+          // NEW: Add game mode indicator
+          let modeIndicator = '';
+          if (d.twoImpostorsMode) {
+            modeIndicator = `<div style="color:#9b59b6; margin-bottom: 10px; text-align: center;">
+              <small>2 Impostors Mode</small>
+            </div>`;
+          }
+          
           // UPDATED: Word and hint on same line with proper alignment
           results.innerHTML =
-            `<h2 style="color:${winnerColor}; text-align:center">${d.winner} Won!</h2>` +
+            `<h2 style="color:${winnerColor}; text-align:center">${d.winner} ${d.winner === 'Draw' ? '' : 'Won!'}</h2>` +
+            modeIndicator +
             impostorGuessHtml +
+            ejectedHtml +
             `<div class="word-hint-container">
               <div><b>Word:</b> ${capitalize(d.secretWord)}</div>
               <span class="word-hint-separator">|</span>
@@ -1542,6 +1603,17 @@ function submitWord() {
   input.value = '';
 }
 
+// NEW: Toggle two impostors option
+function toggleTwoImpostorsOption() {
+  const checkbox = document.querySelector('#twoImpostorsToggle input[type="checkbox"]');
+  if (!checkbox || !ws || ws.readyState !== WebSocket.OPEN) return;
+  
+  ws.send(JSON.stringify({ 
+    type: 'toggleTwoImpostors', 
+    enabled: checkbox.checked 
+  }));
+}
+
 function toggleImpostorGuessOption() {
   const checkbox = document.querySelector('#impostorGuessToggle input[type="checkbox"]');
   if (!checkbox || !ws || ws.readyState !== WebSocket.OPEN) return;
@@ -1550,6 +1622,36 @@ function toggleImpostorGuessOption() {
     type: 'toggleImpostorGuess', 
     enabled: checkbox.checked 
   }));
+}
+
+// NEW: Update two impostors toggle
+function updateTwoImpostorsToggle() {
+  const twoImpostorsToggle = document.getElementById('twoImpostorsToggle');
+  if (!twoImpostorsToggle) return;
+  
+  if (isSpectator) {
+    twoImpostorsToggle.style.display = 'none';
+    return;
+  }
+  
+  twoImpostorsToggle.style.display = 'flex';
+  const checkbox = twoImpostorsToggle.querySelector('input[type="checkbox"]');
+  const label = twoImpostorsToggle.querySelector('.toggle-label');
+  
+  if (checkbox && label) {
+    checkbox.checked = twoImpostorsOption;
+    checkbox.disabled = !isOwner;
+    
+    if (isOwner) {
+      label.style.color = '#fff';
+      label.style.cursor = 'pointer';
+      checkbox.style.cursor = 'pointer';
+    } else {
+      label.style.color = '#95a5a6';
+      label.style.cursor = 'not-allowed';
+      checkbox.style.cursor = 'not-allowed';
+    }
+  }
 }
 
 function updateImpostorGuessToggle() {
@@ -1583,6 +1685,11 @@ function updateImpostorGuessToggle() {
 
 function showImpostorGuessInfo() {
   alert('When enabled, if the impostor is voted out, they get a 30-second last chance to guess the secret word. If they guess correctly, they win! Otherwise, civilians win.');
+}
+
+// NEW: Show two impostors info
+function showTwoImpostorsInfo() {
+  alert('When enabled, the game will have 2 impostors instead of 1. In voting phase, the top 2 voted players will be ejected. Game winning logic:\n\n• Both impostors voted out → Civilians win\n• No impostors voted out → Impostors win\n• One impostor voted out → Draw\n\nNote: Requires at least 4 players for balanced gameplay.');
 }
 
 join.onclick = () => joinAsPlayer(false);
