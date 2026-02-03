@@ -410,6 +410,8 @@ function startGame(lobby) {
   const { word, hint } = getRandomWord(lobby);
   lobby.word = word;
   lobby.hint = hint;
+  
+lobby.impostorGuesses = null;
 
   const shuffledConnectedPlayers = [...connectedPlayers].sort(() => Math.random() - 0.5);
   
