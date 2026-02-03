@@ -97,6 +97,7 @@ let lobbyListRefreshInterval = null;
 let impostorGuessTimer = null;
 let impostorGuessEndsAt = null;
 let isImpostor = false;
+let isEjectedImpostor = false; // NEW: Track if current player is ejected impostor who should guess
 let isOwner = false;
 let impostorGuessOption = false;
 let twoImpostorsOption = false;
@@ -582,6 +583,7 @@ function exitLobby() {
   impostorGuessOption = false;
   twoImpostorsOption = false;
   twoImpostorsMode = false;
+  isEjectedImpostor = false; // Reset ejected impostor state
   updateConnectionStatus('disconnected');
   
   stopTurnTimerAnimation();
@@ -649,6 +651,7 @@ function resetToLobbyScreen() {
   impostorGuessOption = false;
   twoImpostorsOption = false;
   twoImpostorsMode = false;
+  isEjectedImpostor = false; // Reset ejected impostor state
   updateConnectionStatus('disconnected');
   
   stopTurnTimerAnimation();
@@ -984,6 +987,7 @@ function connect() {
           hasClickedRestart = false;
           spectatorHasClickedRestart = false;
           spectatorWantsToJoin = false;
+          isEjectedImpostor = false; // Reset ejected impostor state
           
           if (d.playerName) {
             myPlayerName = d.playerName;
@@ -1044,6 +1048,8 @@ function connect() {
         }
 
         if (d.type === 'turnUpdate') {
+          isEjectedImpostor = false; // Reset ejected impostor state
+          
           const formatWord = (entry) => {
             if (entry.word === '' || entry.word === null || entry.word === undefined) {
               return `${entry.name}: (skipped)`;
@@ -1090,6 +1096,7 @@ function connect() {
         if (d.type === 'startVoting') {
           stopTurnTimerAnimation();
           stopImpostorGuessTimerAnimation();
+          isEjectedImpostor = false; // Reset ejected impostor state
           
           twoImpostorsMode = d.twoImpostorsMode || false;
           
@@ -1138,38 +1145,69 @@ function connect() {
           }
         }
 
+        // UPDATED: impostorGuessPhase handler for multiple impostors
         if (d.type === 'impostorGuessPhase') {
           stopTurnTimerAnimation();
           stopImpostorGuessTimerAnimation();
           
           isMyTurn = false;
           currentTurnEndsAt = null;
+          isEjectedImpostor = false; // Reset first
+          
+          const ejectedNames = Array.isArray(d.ejected) ? d.ejected : [d.ejected];
+          const ejectedText = ejectedNames.join(' and ');
           
           if (d.isImpostor) {
-            turnEl.textContent = 'You were voted out! Guess the word to win!';
-            input.placeholder = 'Guess the word (30s)...';
-            input.disabled = false;
-            submit.disabled = false;
-            submit.textContent = 'Submit Guess';
-            submit.onclick = submitImpostorGuess;
+            // Check if current player is among the ejected impostors
+            const playerIsEjected = ejectedNames.some(name => name === myPlayerName);
             
-            if (d.guessEndsAt) {
-              startImpostorGuessTimerAnimation(d.guessEndsAt);
+            if (playerIsEjected) {
+              isEjectedImpostor = true;
+              turnEl.textContent = 'You were voted out! Guess the word to win!';
+              input.placeholder = 'Guess the word (30s)...';
+              input.disabled = false;
+              submit.disabled = false;
+              submit.textContent = 'Submit Guess';
+              submit.onclick = submitImpostorGuess;
+              
+              if (d.guessEndsAt) {
+                startImpostorGuessTimerAnimation(d.guessEndsAt);
+              }
+              
+              const isMultiple = ejectedNames.length > 1;
+              voting.innerHTML = '<h3>Last Chance to Win!</h3>' +
+                `<p>${isMultiple ? 'You and the other ejected impostor have' : 'You have'} 30 seconds to guess the secret word.</p>` +
+                '<p>If any ejected impostor guesses correctly, the impostors win!</p>';
+            } else {
+              // Impostor but not ejected (in 2-impostor mode when only one was ejected)
+              turnEl.textContent = 'Your teammate was voted out! They are guessing...';
+              input.placeholder = 'Waiting for teammate to guess...';
+              input.disabled = true;
+              submit.disabled = true;
+              
+              voting.innerHTML = '<h3>Teammate is Guessing</h3>' +
+                `<p>Your teammate (${ejectedText}) has 30 seconds to guess the secret word.</p>` +
+                '<p>If they guess correctly, the impostors win!</p>';
+            }
+          } else {
+            // Civilian or spectator view
+            const isMultiple = ejectedNames.length > 1;
+            
+            if (isMultiple) {
+              turnEl.textContent = 'Impostors were voted out! They have 30 seconds to guess the word...';
+              voting.innerHTML = '<h3>Impostors are Guessing</h3>' +
+                `<p>The impostors (${ejectedText}) have 30 seconds to guess the secret word.</p>` +
+                '<p>If any of them guesses correctly, the impostors win!</p>';
+            } else {
+              turnEl.textContent = 'Impostor was voted out! They have 30 seconds to guess the word...';
+              voting.innerHTML = '<h3>Impostor is Guessing</h3>' +
+                `<p>The impostor (${ejectedText}) has 30 seconds to guess the secret word.</p>` +
+                '<p>If they guess correctly, the impostors win!</p>';
             }
             
-            let ejectedText = Array.isArray(d.ejected) ? d.ejected.join(' and ') : d.ejected;
-            voting.innerHTML = '<h3>Last Chance to Win!</h3>' +
-              `<p>You (${ejectedText}) have 30 seconds to guess the secret word. If you guess correctly, the impostors win!</p>`;
-          } else {
-            let ejectedText = Array.isArray(d.ejected) ? d.ejected.join(' and ') : d.ejected;
-            turnEl.textContent = 'Impostor was voted out! They have 30 seconds to guess the word...';
-            input.placeholder = 'Waiting for impostor to guess...';
+            input.placeholder = 'Waiting for impostor(s) to guess...';
             input.disabled = true;
             submit.disabled = true;
-            
-            voting.innerHTML = '<h3>Impostor is Guessing</h3>' +
-              `<p>The impostor (${ejectedText}) has 30 seconds to guess the secret word.</p>` +
-              '<p>If they guess correctly, the impostors win!</p>';
           }
           
           results.innerHTML = '';
@@ -1181,6 +1219,7 @@ function connect() {
           isMyTurn = false;
           currentTurnEndsAt = null;
           isImpostor = false;
+          isEjectedImpostor = false;
           
           const winnerColor = '#f39c12';
           let reasonText = '';
@@ -1253,12 +1292,14 @@ function connect() {
           turnEl.textContent = 'Game Ended Early';
         }
 
+        // UPDATED: gameEnd handler with multiple impostor guesses support
         if (d.type === 'gameEnd') {
           stopTurnTimerAnimation();
           stopImpostorGuessTimerAnimation();
           isMyTurn = false;
           currentTurnEndsAt = null;
           isImpostor = false;
+          isEjectedImpostor = false;
           
           submit.textContent = 'Submit';
           submit.onclick = submitWord;
@@ -1289,22 +1330,28 @@ function connect() {
           });
           rolesHtml += '</div>';
           
+          // UPDATED: Votes display to handle array votes
           let votesHtml = '<div class="results-grid">';
           if (d.votes) {
             Object.entries(d.votes).forEach(([voter, votedFor]) => {
               const voterRole = d.roles.find(r => r.name === voter)?.role;
-              const votedForRole = d.roles.find(r => r.name === votedFor)?.role;
-              
               const voterColor = voterRole === 'civilian' ? '#2ecc71' : '#e74c3c';
-              const votedForColor = votedForRole === 'civilian' ? '#2ecc71' : '#e74c3c';
               
-              votesHtml += `
-                <div class="vote-results-item">
-                  <span class="vote-voter" style="color:${voterColor}">${voter}</span>
-                  <div class="vote-arrow">→</div>
-                  <span class="vote-voted" style="color:${votedForColor}">${votedFor}</span>
-                </div>
-              `;
+              // Handle both single vote and array votes
+              const votes = Array.isArray(votedFor) ? votedFor : [votedFor];
+              
+              votes.forEach(vote => {
+                const votedForRole = d.roles.find(r => r.name === vote)?.role;
+                const votedForColor = votedForRole === 'civilian' ? '#2ecc71' : '#e74c3c';
+                
+                votesHtml += `
+                  <div class="vote-results-item">
+                    <span class="vote-voter" style="color:${voterColor}">${voter}</span>
+                    <div class="vote-arrow">→</div>
+                    <span class="vote-voted" style="color:${votedForColor}">${vote}</span>
+                  </div>
+                `;
+              });
             });
           }
           votesHtml += '</div>';
@@ -1322,8 +1369,36 @@ function connect() {
             </div>`;
           }
           
+          // UPDATED: Impostor guess display for multiple impostors
           let impostorGuessHtml = '';
-          if (d.impostorGuess !== undefined) {
+          if (d.impostorGuesses && Object.keys(d.impostorGuesses).length > 0) {
+            let guessesHtml = '<div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; margin: 10px 0;">';
+            guessesHtml += '<b>Impostor Guesses:</b><br><br>';
+            
+            let anyCorrect = false;
+            Object.values(d.impostorGuesses).forEach(guessData => {
+              if (guessData.guess === d.secretWord.toLowerCase()) {
+                anyCorrect = true;
+                guessesHtml += `<div class="guess-result guess-correct">
+                  <strong>${guessData.name}:</strong> "${guessData.guess}" ✓
+                </div>`;
+              } else {
+                guessesHtml += `<div class="guess-result guess-incorrect">
+                  <strong>${guessData.name}:</strong> "${guessData.guess}" ✗
+                </div>`;
+              }
+            });
+            
+            if (anyCorrect) {
+              guessesHtml += '<br><div style="color:#2ecc71; font-weight:bold;">At least one impostor guessed correctly! Impostors win!</div>';
+            } else {
+              guessesHtml += '<br><div style="color:#e74c3c; font-weight:bold;">No impostors guessed correctly! Civilians win!</div>';
+            }
+            
+            guessesHtml += '</div>';
+            impostorGuessHtml = guessesHtml;
+          } else if (d.impostorGuess !== undefined) {
+            // Legacy support for single impostor guess
             const guessResult = d.impostorGuessCorrect ? 
               `<span style="color:#2ecc71">Correct guess! The impostors win!</span>` :
               `<span style="color:#e74c3c">Wrong guess! The impostor said: "${d.impostorGuess}"</span>`;
@@ -1343,9 +1418,18 @@ function connect() {
             </div>`;
           }
           
+          // Add reason for game end (e.g., timeout)
+          let reasonHtml = '';
+          if (d.reason === 'impostorGuessTimeout') {
+            reasonHtml = `<div style="color:#f39c12; text-align:center; margin:10px 0;">
+              <i>Time expired! Impostor(s) failed to guess in time.</i>
+            </div>`;
+          }
+          
           results.innerHTML =
             `<h2 style="color:${winnerColor}; text-align:center">${d.winner} ${d.winner === 'Draw' ? '' : 'Won!'}</h2>` +
             modeIndicator +
+            reasonHtml +
             impostorGuessHtml +
             ejectedHtml +
             `<div class="word-hint-container">
@@ -1621,8 +1705,9 @@ window.clearVotes = () => {
   updateVoteCountDisplay();
 };
 
+// UPDATED: submitImpostorGuess function
 function submitImpostorGuess() {
-  if (!input.value.trim() || !isImpostor) return;
+  if (!input.value.trim() || !isEjectedImpostor) return;
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     showConnectionWarning('Connection lost. Please wait for reconnection...');
     return;
@@ -1637,6 +1722,7 @@ function submitImpostorGuess() {
   input.disabled = true;
   submit.disabled = true;
   submit.textContent = 'Guess Submitted';
+  isEjectedImpostor = false; // Reset after submitting
 }
 
 function submitWord() {
@@ -1728,7 +1814,7 @@ function updateImpostorGuessToggle() {
 }
 
 function showImpostorGuessInfo() {
-  alert('When enabled, if the impostor is voted out, they get a 30-second last chance to guess the secret word. If they guess correctly, they win! Otherwise, civilians win.');
+  alert('When enabled, if impostors are voted out, they get a 30-second last chance to guess the secret word. If any impostor guesses correctly, they win! Otherwise, civilians win!\n\n• Single impostor mode: Only the ejected impostor guesses\n• Two impostors mode: All ejected impostors get to guess');
 }
 
 function showTwoImpostorsInfo() {
@@ -1791,7 +1877,7 @@ lobbyId.addEventListener('keypress', (e) => {
 
 input.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') {
-    if (isImpostor && submit.onclick === submitImpostorGuess) {
+    if (isEjectedImpostor && submit.onclick === submitImpostorGuess) {
       submitImpostorGuess();
     } else if (!isSpectator) {
       submitWord();
@@ -1843,6 +1929,25 @@ window.addEventListener('beforeunload', () => {
     }
   }
 });
+
+// Add CSS for guess results
+const style = document.createElement('style');
+style.textContent = `
+  .guess-result {
+    margin: 5px 0;
+    padding: 5px 10px;
+    border-radius: 4px;
+  }
+  .guess-correct {
+    background-color: rgba(46, 204, 113, 0.2);
+    border-left: 3px solid #2ecc71;
+  }
+  .guess-incorrect {
+    background-color: rgba(231, 76, 60, 0.2);
+    border-left: 3px solid #e74c3c;
+  }
+`;
+document.head.appendChild(style);
 
 updateConnectionStatus('disconnected');
 safeLog('Game client initialized');
