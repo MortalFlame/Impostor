@@ -33,7 +33,6 @@ const voting = document.getElementById('voting');
 const results = document.getElementById('results');
 const restart = document.getElementById('restart');
 
-// Function to update join button text based on lobby input
 function updateJoinButtonText() {
   const lobbyInput = document.getElementById('lobbyId');
   const joinButton = document.getElementById('join');
@@ -47,7 +46,6 @@ function updateJoinButtonText() {
   }
 }
 
-// Add event listeners for the lobby input
 document.addEventListener('DOMContentLoaded', () => {
   const lobbyInput = document.getElementById('lobbyId');
   if (lobbyInput) {
@@ -55,7 +53,6 @@ document.addEventListener('DOMContentLoaded', () => {
     lobbyInput.addEventListener('change', updateJoinButtonText);
     lobbyInput.addEventListener('keyup', updateJoinButtonText);
     
-    // Initial update
     setTimeout(updateJoinButtonText, 100);
   }
 });
@@ -85,30 +82,29 @@ let connectionLatency = 0;
 let connectionStable = true;
 let connectionState = 'disconnected';
 
-// Timer animation variables
 let timerAnimationFrame = null;
 let currentTurnEndsAt = null;
 let isMyTurn = false;
 
-// Reconnection timers
 let reconnectTimer = null;
 let connectTimeout = null;
 let visibilityReconnectTimer = null;
 
-// Server restart detection
 let lastServerId = localStorage.getItem('lastServerId');
 
-// Lobby list auto-refresh
 let lobbyListRefreshInterval = null;
 
-// Impostor guess variables
 let impostorGuessTimer = null;
 let impostorGuessEndsAt = null;
 let isImpostor = false;
 let isOwner = false;
 let impostorGuessOption = false;
-let twoImpostorsOption = false; // NEW: Two impostors option
-let twoImpostorsMode = false; // NEW: Track if current game is in 2-impostor mode
+let twoImpostorsOption = false;
+let twoImpostorsMode = false;
+
+// NEW: Voting variables
+let selectedVotes = [];
+let hasSubmittedVotes = false;
 
 const DEBUG_MODE = false;
 
@@ -187,7 +183,6 @@ function showConnectionWarning(message) {
   }, 5000);
 }
 
-// Absolute-time timer functions
 function getRemainingTimeMs() {
   if (!currentTurnEndsAt) return 0;
   const now = Date.now();
@@ -225,30 +220,25 @@ function startTurnTimerAnimation(turnEndsAt) {
     const timeLeftSeconds = Math.ceil(remainingMs / 1000);
     
     if (remainingMs <= 0) {
-      // Time's up
       stopTurnTimerAnimation();
       turnTimerEl.classList.add('hidden');
       turnEl.textContent = 'Time expired! Waiting for next player...';
       return;
     }
     
-    // Update circular timer
     const circumference = 2 * Math.PI * 18;
-    const totalDuration = 30000; // Fixed 30-second turns
+    const totalDuration = 30000;
     const progress = (remainingMs / totalDuration) * 100;
     const offset = circumference - (progress / 100) * circumference;
     
     updateTimerColor(timeLeftSeconds);
     timerProgress.style.strokeDashoffset = offset;
     
-    // Update timer text
     timerText.textContent = timeLeftSeconds;
     
-    // Continue animation
     timerAnimationFrame = requestAnimationFrame(animateTimer);
   }
   
-  // Start animation
   timerAnimationFrame = requestAnimationFrame(animateTimer);
 }
 
@@ -261,11 +251,6 @@ function stopTurnTimerAnimation() {
   turnTimerEl.classList.add('hidden');
 }
 
-function stopTurnTimer() {
-  stopTurnTimerAnimation();
-}
-
-// Impostor guess timer functions
 function startImpostorGuessTimerAnimation(guessEndsAt) {
   stopImpostorGuessTimerAnimation();
   
@@ -283,30 +268,25 @@ function startImpostorGuessTimerAnimation(guessEndsAt) {
     const timeLeftSeconds = Math.ceil(remainingMs / 1000);
     
     if (remainingMs <= 0) {
-      // Time's up
       stopImpostorGuessTimerAnimation();
       turnTimerEl.classList.add('hidden');
       turnEl.textContent = 'Time expired! Impostor failed to guess.';
       return;
     }
     
-    // Update circular timer
     const circumference = 2 * Math.PI * 18;
-    const totalDuration = 30000; // Fixed 30-second timer
+    const totalDuration = 30000;
     const progress = (remainingMs / totalDuration) * 100;
     const offset = circumference - (progress / 100) * circumference;
     
     updateTimerColor(timeLeftSeconds);
     timerProgress.style.strokeDashoffset = offset;
     
-    // Update timer text
     timerText.textContent = timeLeftSeconds;
     
-    // Continue animation
     impostorGuessTimer = requestAnimationFrame(animateImpostorGuessTimer);
   }
   
-  // Start animation
   impostorGuessTimer = requestAnimationFrame(animateImpostorGuessTimer);
 }
 
@@ -373,12 +353,10 @@ function updateLobbyList(lobbies) {
   const lobbyListContainer = document.getElementById('lobbyListContainer');
   if (!lobbyListContainer) return;
   
-  // Ensure container is visible when we're browsing lobbies
   if (lobbyCard && !lobbyCard.classList.contains('hidden')) {
     lobbyListContainer.style.display = 'block';
   }
   
-  // Sort lobbies by creation date (newest first)
   lobbies.sort((a, b) => b.createdAt - a.createdAt);
   
   if (lobbies.length === 0) {
@@ -406,7 +384,6 @@ function updateLobbyList(lobbies) {
       const twoImpostorsBadge = lobby.twoImpostorsOption ?
         '<span class="two-impostors-badge" title="2 Impostors Mode">👥</span>' : '';
       
-      // Add phase indicator
       let phaseIndicator = '';
       if (lobby.phase === 'lobby') {
         phaseIndicator = '<span class="phase-indicator lobby-phase">Waiting</span>';
@@ -438,7 +415,6 @@ function updateLobbyList(lobbies) {
     lobbiesHtml += '</div>';
     lobbyListContainer.innerHTML = lobbiesHtml;
     
-    // Add event listeners to join buttons
     document.querySelectorAll('.join-lobby-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const lobbyIdToJoin = e.target.getAttribute('data-lobby-id');
@@ -449,7 +425,6 @@ function updateLobbyList(lobbies) {
       });
     });
     
-    // Add event listener to refresh button
     const refreshBtn = document.getElementById('refreshLobbies');
     if (refreshBtn) {
       refreshBtn.addEventListener('click', () => {
@@ -459,40 +434,24 @@ function updateLobbyList(lobbies) {
   }
 }
 
-function getTimeAgo(timestamp) {
-  const now = Date.now();
-  const diff = now - timestamp;
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  
-  if (minutes < 1) return 'Just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  return 'Long ago';
-}
-
 function refreshLobbyList() {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'getLobbyList' }));
   }
 }
 
-// Auto-refresh lobby list every 5 seconds when on lobby screen
 function startLobbyListAutoRefresh() {
-  // Clear any existing interval first
   if (lobbyListRefreshInterval) {
     clearInterval(lobbyListRefreshInterval);
     lobbyListRefreshInterval = null;
   }
   
-  // Start a new interval that refreshes every 5 seconds
   lobbyListRefreshInterval = setInterval(() => {
-    // Only refresh if we're on the lobby screen (not in a game)
     if (lobbyCard && !lobbyCard.classList.contains('hidden') && 
         ws && ws.readyState === WebSocket.OPEN) {
       refreshLobbyList();
     }
-  }, 5000); // 5 seconds
+  }, 5000);
 }
 
 function stopLobbyListAutoRefresh() {
@@ -502,7 +461,6 @@ function stopLobbyListAutoRefresh() {
   }
 }
 
-// SINGLE visibility change handler (FIXED: removed duplicate)
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && currentTurnEndsAt && isMyTurn) {
     startTurnTimerAnimation(currentTurnEndsAt);
@@ -511,7 +469,6 @@ document.addEventListener('visibilitychange', () => {
     timerAnimationFrame = null;
   }
   
-  // Also handle impostor guess timer
   if (!document.hidden && impostorGuessEndsAt && isImpostor) {
     startImpostorGuessTimerAnimation(impostorGuessEndsAt);
   } else if (document.hidden && impostorGuessTimer) {
@@ -519,7 +476,6 @@ document.addEventListener('visibilitychange', () => {
     impostorGuessTimer = null;
   }
   
-  // Reconnection logic for visibility changes
   safeLog('Page visible - checking connection');
   if (!document.hidden) {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -543,7 +499,6 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-// Force reconnect function
 function forceReconnect() {
   safeLog('Forcing reconnect...');
   
@@ -575,7 +530,6 @@ function forceReconnect() {
 }
 
 function exitLobby() {
-  // Stop auto-refresh first
   stopLobbyListAutoRefresh();
   
   if (reconnectTimer) {
@@ -626,8 +580,8 @@ function exitLobby() {
   joinType = 'browseLobbies';
   isOwner = false;
   impostorGuessOption = false;
-  twoImpostorsOption = false; // NEW: Reset two impostors option
-  twoImpostorsMode = false; // NEW: Reset two impostors mode
+  twoImpostorsOption = false;
+  twoImpostorsMode = false;
   updateConnectionStatus('disconnected');
   
   stopTurnTimerAnimation();
@@ -640,21 +594,17 @@ function exitLobby() {
   
   safeLog('Exited lobby');
   
-  // FIX #2: Show the lobby list container
   const lobbyListContainer = document.getElementById('lobbyListContainer');
   if (lobbyListContainer) {
     lobbyListContainer.style.display = 'block';
   }
   
-  // Refresh lobby list after exiting
   setTimeout(() => {
     refreshLobbyList();
   }, 500);
   
-  // Start auto-refresh again
   startLobbyListAutoRefresh();
   
-  // Reconnect for lobby browsing
   setTimeout(() => {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       joinType = 'browseLobbies';
@@ -697,8 +647,8 @@ function resetToLobbyScreen() {
   joinType = 'browseLobbies';
   isOwner = false;
   impostorGuessOption = false;
-  twoImpostorsOption = false; // NEW: Reset two impostors option
-  twoImpostorsMode = false; // NEW: Reset two impostors mode
+  twoImpostorsOption = false;
+  twoImpostorsMode = false;
   updateConnectionStatus('disconnected');
   
   stopTurnTimerAnimation();
@@ -709,28 +659,23 @@ function resetToLobbyScreen() {
     window.pingInterval = null;
   }
   
-  // FIX #2: Show the lobby list container
   const lobbyListContainer = document.getElementById('lobbyListContainer');
   if (lobbyListContainer) {
     lobbyListContainer.style.display = 'block';
   }
   
-  // // Refresh lobby list when returning to lobby screen
-setTimeout(() => {
-  refreshLobbyList();
-}, 500);
-
-// Start auto-refresh of lobby list
-startLobbyListAutoRefresh();
-
-// FIX #3: Reconnect for lobby browsing if not already connected
-setTimeout(() => {
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    joinType = 'browseLobbies';
-    connect();
-  }
-}, 100);
-// Update join button text
+  setTimeout(() => {
+    refreshLobbyList();
+  }, 500);
+  
+  startLobbyListAutoRefresh();
+  
+  setTimeout(() => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      joinType = 'browseLobbies';
+      connect();
+    }
+  }, 100);
   updateJoinButtonText();
 }
 
@@ -743,11 +688,10 @@ function joinAsPlayer(isReconnect = false) {
   isSpectator = false;
   spectatorWantsToJoin = false;
   spectatorHasClickedRestart = false;
-  joinType = 'joinLobby';  // IMPORTANT: Set this before connect()
+  joinType = 'joinLobby';
   connectionAttempts = 0;
   reconnectDelay = 2000;
   
-  // Stop auto-refresh when joining a lobby
   stopLobbyListAutoRefresh();
   
   connect();
@@ -757,11 +701,10 @@ function joinAsSpectator() {
   isSpectator = true;
   spectatorWantsToJoin = false;
   spectatorHasClickedRestart = false;
-  joinType = 'joinSpectator';  // IMPORTANT: Set this before connect()
+  joinType = 'joinSpectator';
   connectionAttempts = 0;
   reconnectDelay = 2000;
   
-  // Stop auto-refresh when joining as spectator
   stopLobbyListAutoRefresh();
   
   connect();
@@ -811,7 +754,6 @@ function connect() {
     return;
   }
 
-  // Only require nickname for joinLobby or joinSpectator, not for browseLobbies
   if (!nickname.value.trim() && (joinType === 'joinLobby' || joinType === 'joinSpectator')) {
     alert('Please enter a nickname');
     return;
@@ -841,7 +783,6 @@ function connect() {
     ws = new WebSocket(wsUrl);
     connectionAttempts++;
     
-    // Safari fix: Kill sockets stuck in CONNECTING state
     connectTimeout = setTimeout(() => {
       if (ws && ws.readyState === WebSocket.CONNECTING) {
         safeLog('WebSocket stuck in CONNECTING, forcing close');
@@ -865,7 +806,6 @@ function connect() {
   hasShownConnectionWarning = false;
   updateConnectionStatus('connected');
   
-  // Don't show game header for lobby browsing
   if (joinType !== 'browseLobbies') {
     gameHeader.classList.remove('hidden');
   }
@@ -882,18 +822,14 @@ function connect() {
     }
   }, 25000);
   
-  // FIX #2: Handle different connection types correctly
   setTimeout(() => {
     if (joinType === 'browseLobbies') {
-      // For browsing lobbies, just send a getLobbyList request
-      // Wait a bit to ensure connection is fully established
       try {
         ws.send(JSON.stringify({ type: 'getLobbyList' }));
       } catch (err) {
         safeError('Failed to send getLobbyList');
       }
     } else if (joinType === 'joinSpectator') {
-      // Joining as spectator
       ws.send(JSON.stringify({
         type: 'joinSpectator',
         name: nickname.value.trim(),
@@ -901,7 +837,6 @@ function connect() {
         playerId
       }));
     } else {
-      // Default: joining as player (host or regular player)
       ws.send(JSON.stringify({
         type: 'joinLobby',
         name: nickname.value.trim(),
@@ -965,7 +900,6 @@ function connect() {
         if (d.type === 'lobbyList') {
           updateLobbyList(d.lobbies || []);
           
-          // Show the lobby list container
           const lobbyListContainer = document.getElementById('lobbyListContainer');
           if (lobbyListContainer) {
             lobbyListContainer.style.display = 'block';
@@ -981,7 +915,7 @@ function connect() {
           myPlayerName = d.yourName || d.playerName || nickname.value.trim();
           isOwner = d.isOwner || false;
           impostorGuessOption = d.impostorGuessOption || false;
-          twoImpostorsOption = d.twoImpostorsOption || false; // NEW: Set two impostors option
+          twoImpostorsOption = d.twoImpostorsOption || false;
           
           lobbyCodeDisplay.textContent = d.lobbyId;
           
@@ -994,20 +928,16 @@ function connect() {
             nickname.disabled = true;
           }
           
-          // Show exit button in header after joining lobby
           exitLobbyBtn.style.display = 'block';
           
-          // Hide lobby list when in a lobby
           const lobbyListContainer = document.getElementById('lobbyListContainer');
           if (lobbyListContainer) {
             lobbyListContainer.style.display = 'none';
           }
           
-          // Update impostor guess option toggle
           updateImpostorGuessToggle();
-          updateTwoImpostorsToggle(); // NEW: Update two impostors toggle
+          updateTwoImpostorsToggle();
           
-          // FIX #3: Stop auto-refresh when assigned to a lobby
           stopLobbyListAutoRefresh();
         }
 
@@ -1017,7 +947,7 @@ function connect() {
           const isOwnerCheck = d.owner === playerId;
           isOwner = isOwnerCheck;
           impostorGuessOption = d.impostorGuessOption || false;
-          twoImpostorsOption = d.twoImpostorsOption || false; // NEW: Update two impostors option
+          twoImpostorsOption = d.twoImpostorsOption || false;
           
           start.disabled = isSpectator || d.players.length < 3 || !isOwnerCheck;
           
@@ -1026,9 +956,8 @@ function connect() {
           
           exitLobbyBtn.style.display = 'block';
           
-          // Update impostor guess option toggle
           updateImpostorGuessToggle();
-          updateTwoImpostorsToggle(); // NEW: Update two impostors toggle
+          updateTwoImpostorsToggle();
           
           if (d.phase && d.phase !== 'lobby') {
             players.innerHTML += `<br><i style="color:#f39c12">Game in progress: ${d.phase}</i>`;
@@ -1072,7 +1001,6 @@ function connect() {
             restart.classList.remove('hidden');
             restart.disabled = false;
             restart.style.opacity = '1';
-            // FIX: Reset spectatorWantsToJoin when game starts for spectators
             spectatorWantsToJoin = false;
             spectatorHasClickedRestart = false;
           } else {
@@ -1149,7 +1077,6 @@ function connect() {
               submit.disabled = !isMyTurn;
               input.placeholder = isMyTurn ? 'Your word (30s)' : `Waiting for ${d.currentPlayer}...`;
               
-              // Use absolute time from server (turnEndsAt)
               if (d.turnEndsAt) {
                 currentTurnEndsAt = d.turnEndsAt;
                 if (isMyTurn) {
@@ -1164,10 +1091,14 @@ function connect() {
           stopTurnTimerAnimation();
           stopImpostorGuessTimerAnimation();
           
-          twoImpostorsMode = d.twoImpostorsMode || false; // NEW: Set voting mode
+          twoImpostorsMode = d.twoImpostorsMode || false;
+          
+          // Reset voting variables
+          selectedVotes = [];
+          hasSubmittedVotes = false;
           
           if (twoImpostorsMode) {
-            turnEl.textContent = isSpectator ? 'Spectating - Vote for 2 Impostors!' : 'Vote for 2 Impostors! (Top 2 voted players will be ejected)';
+            turnEl.textContent = isSpectator ? 'Spectating - Vote for 2 Impostors!' : 'Vote for 2 Impostors! (Select 2 players)';
           } else {
             turnEl.textContent = isSpectator ? 'Spectating - Vote for the Impostor!' : 'Vote for the Impostor!';
           }
@@ -1182,10 +1113,10 @@ function connect() {
             voting.innerHTML = '<h3>Spectating Votes</h3>' +
               d.players.map(p => `<div class="spectator-vote-btn">${p}</div>`).join('');
           } else {
-            // NEW: Show voting instructions for 2-impostor mode
             let votingHeader = '<h3>Vote</h3>';
             if (twoImpostorsMode) {
-              votingHeader += '<p style="color:#f39c12; font-size: 12px; margin-top: -5px; margin-bottom: 10px;">Vote for who you think is an impostor (2 players will be ejected)</p>';
+              votingHeader += '<p style="color:#f39c12; font-size: 12px; margin-top: -5px; margin-bottom: 10px;">Select 2 players you think are impostors</p>';
+              votingHeader += '<div id="voteCountDisplay" style="color:#f39c12; font-weight:bold; margin-bottom: 10px;">Selected: 0/2</div>';
             }
             
             voting.innerHTML = votingHeader +
@@ -1193,6 +1124,17 @@ function connect() {
                 .filter(p => p !== myPlayerName)
                 .map(p => `<button class="vote-btn" onclick="vote('${p}', this)">${p}</button>`)
                 .join('');
+            
+            if (twoImpostorsMode) {
+              voting.innerHTML += `
+                <button id="submitVotesBtn" class="button-base" style="margin-top: 10px; background: linear-gradient(135deg, #27ae60, #2ecc71);" onclick="submitVotes()">
+                  Submit Votes
+                </button>
+                <button id="clearVotesBtn" class="button-base" style="margin-top: 5px; background: linear-gradient(135deg, #e74c3c, #c0392b);" onclick="clearVotes()">
+                  Clear Selection
+                </button>
+              `;
+            }
           }
         }
 
@@ -1204,7 +1146,6 @@ function connect() {
           currentTurnEndsAt = null;
           
           if (d.isImpostor) {
-            // We are the impostor and get to guess
             turnEl.textContent = 'You were voted out! Guess the word to win!';
             input.placeholder = 'Guess the word (30s)...';
             input.disabled = false;
@@ -1212,7 +1153,6 @@ function connect() {
             submit.textContent = 'Submit Guess';
             submit.onclick = submitImpostorGuess;
             
-            // Show the guess timer
             if (d.guessEndsAt) {
               startImpostorGuessTimerAnimation(d.guessEndsAt);
             }
@@ -1221,7 +1161,6 @@ function connect() {
             voting.innerHTML = '<h3>Last Chance to Win!</h3>' +
               `<p>You (${ejectedText}) have 30 seconds to guess the secret word. If you guess correctly, the impostors win!</p>`;
           } else {
-            // We are a civilian or spectator watching the impostor guess
             let ejectedText = Array.isArray(d.ejected) ? d.ejected.join(' and ') : d.ejected;
             turnEl.textContent = 'Impostor was voted out! They have 30 seconds to guess the word...';
             input.placeholder = 'Waiting for impostor to guess...';
@@ -1243,8 +1182,7 @@ function connect() {
           currentTurnEndsAt = null;
           isImpostor = false;
           
-          // FIXED: Don't show "Impostor Won" when impostor leaves
-          const winnerColor = '#f39c12'; // Orange for neutral message
+          const winnerColor = '#f39c12';
           let reasonText = '';
           
           if (d.reason === 'not_enough_players') {
@@ -1272,7 +1210,6 @@ function connect() {
           });
           rolesHtml += '</div>';
           
-          // UPDATED: Word and hint on same line with proper alignment
           results.innerHTML =
             `<h2 style="color:${winnerColor}; text-align:center">Game Ended Early</h2>` +
             reasonText +
@@ -1290,7 +1227,6 @@ function connect() {
           
           if (isSpectator) {
             restart.classList.remove('hidden');
-            // FIX: Spectator button should remain "Joining next game..." if they already clicked
             if (spectatorWantsToJoin || spectatorHasClickedRestart) {
               restart.innerText = 'Joining next game...';
               restart.disabled = true;
@@ -1324,11 +1260,9 @@ function connect() {
           currentTurnEndsAt = null;
           isImpostor = false;
           
-          // Reset submit button to normal function
           submit.textContent = 'Submit';
           submit.onclick = submitWord;
           
-          // NEW: Determine winner color based on outcome
           let winnerColor;
           if (d.winner === 'Civilians') {
             winnerColor = '#2ecc71';
@@ -1375,7 +1309,6 @@ function connect() {
           }
           votesHtml += '</div>';
           
-          // Add ejected players display
           let ejectedHtml = '';
           if (d.ejected && d.ejected.length > 0) {
             let ejectedText = '';
@@ -1389,7 +1322,6 @@ function connect() {
             </div>`;
           }
           
-          // Add impostor guess result if applicable
           let impostorGuessHtml = '';
           if (d.impostorGuess !== undefined) {
             const guessResult = d.impostorGuessCorrect ? 
@@ -1404,7 +1336,6 @@ function connect() {
             `;
           }
           
-          // NEW: Add game mode indicator
           let modeIndicator = '';
           if (d.twoImpostorsMode) {
             modeIndicator = `<div style="color:#9b59b6; margin-bottom: 10px; text-align: center;">
@@ -1412,7 +1343,6 @@ function connect() {
             </div>`;
           }
           
-          // UPDATED: Word and hint on same line with proper alignment
           results.innerHTML =
             `<h2 style="color:${winnerColor}; text-align:center">${d.winner} ${d.winner === 'Draw' ? '' : 'Won!'}</h2>` +
             modeIndicator +
@@ -1434,7 +1364,6 @@ function connect() {
           
           if (isSpectator) {
             restart.classList.remove('hidden');
-            // FIX: Spectator button should remain "Joining next game..." if they already clicked
             if (spectatorWantsToJoin || spectatorHasClickedRestart) {
               restart.innerText = 'Joining next game...';
               restart.disabled = true;
@@ -1463,7 +1392,6 @@ function connect() {
 
         if (d.type === 'restartUpdate') {
           if (d.isSpectator) {
-            // FIX: Keep spectator button disabled and in "Joining next game..." state if they've already clicked
             if (spectatorHasClickedRestart) {
               restart.innerText = `Joining next game... (${d.readyCount}/${d.totalPlayers} players ready)`;
               restart.disabled = true;
@@ -1574,6 +1502,125 @@ function connect() {
   }
 }
 
+// NEW: Vote count display function
+function updateVoteCountDisplay() {
+  const voteCountElement = document.getElementById('voteCountDisplay');
+  if (voteCountElement) {
+    voteCountElement.textContent = `Selected: ${selectedVotes.length}/2`;
+    if (selectedVotes.length === 2) {
+      voteCountElement.style.color = '#2ecc71';
+    } else {
+      voteCountElement.style.color = '#f39c12';
+    }
+  }
+}
+
+// NEW: Vote function for both modes
+window.vote = (v, btnElement) => {
+  if (isSpectator) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    showConnectionWarning('Connection lost. Please wait for reconnection...');
+    return;
+  }
+  
+  if (twoImpostorsMode) {
+    const index = selectedVotes.indexOf(v);
+    
+    if (index === -1) {
+      if (selectedVotes.length < 2) {
+        selectedVotes.push(v);
+        btnElement.style.background = '#fff';
+        btnElement.style.color = '#000';
+        btnElement.style.fontWeight = 'bold';
+      } else {
+        const firstVote = selectedVotes[0];
+        const firstButton = document.querySelector(`.vote-btn:contains('${firstVote}')`);
+        if (firstButton) {
+          firstButton.style.background = '';
+          firstButton.style.color = '';
+          firstButton.style.fontWeight = '';
+        }
+        selectedVotes.shift();
+        selectedVotes.push(v);
+        btnElement.style.background = '#fff';
+        btnElement.style.color = '#000';
+        btnElement.style.fontWeight = 'bold';
+      }
+    } else {
+      selectedVotes.splice(index, 1);
+      btnElement.style.background = '';
+      btnElement.style.color = '';
+      btnElement.style.fontWeight = '';
+    }
+    
+    updateVoteCountDisplay();
+    
+    if (selectedVotes.length === 2 && !hasSubmittedVotes) {
+      submitVotes();
+    }
+  } else {
+    ws.send(JSON.stringify({ type: 'vote', vote: v }));
+    
+    const buttons = document.querySelectorAll('.vote-btn');
+    buttons.forEach(b => {
+      if (b === btnElement) {
+        b.style.background = '#fff';
+        b.style.color = '#000';
+        b.style.fontWeight = 'bold';
+      } else {
+        b.style.opacity = '0.3';
+        b.style.pointerEvents = 'none';
+      }
+    });
+  }
+};
+
+// NEW: Submit votes function
+function submitVotes() {
+  if (hasSubmittedVotes || selectedVotes.length === 0) return;
+  
+  if (twoImpostorsMode) {
+    if (selectedVotes.length !== 2) {
+      alert('Please select exactly 2 players to vote for.');
+      return;
+    }
+    ws.send(JSON.stringify({ type: 'vote', vote: selectedVotes }));
+  } else {
+    ws.send(JSON.stringify({ type: 'vote', vote: selectedVotes[0] }));
+  }
+  
+  hasSubmittedVotes = true;
+  
+  const buttons = document.querySelectorAll('.vote-btn');
+  buttons.forEach(b => {
+    b.style.opacity = '0.3';
+    b.style.pointerEvents = 'none';
+  });
+  
+  const voteCountElement = document.getElementById('voteCountDisplay');
+  if (voteCountElement) {
+    voteCountElement.textContent = 'Votes submitted!';
+    voteCountElement.style.color = '#2ecc71';
+  }
+}
+
+// NEW: Clear votes function
+window.clearVotes = () => {
+  selectedVotes = [];
+  hasSubmittedVotes = false;
+  
+  const buttons = document.querySelectorAll('.vote-btn');
+  buttons.forEach(b => {
+    b.style.background = '';
+    b.style.color = '';
+    b.style.fontWeight = '';
+    b.style.opacity = '1';
+    b.style.pointerEvents = 'auto';
+  });
+  
+  updateVoteCountDisplay();
+};
+
 function submitImpostorGuess() {
   if (!input.value.trim() || !isImpostor) return;
   if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -1581,7 +1628,6 @@ function submitImpostorGuess() {
     return;
   }
   
-  // Send the impostor's guess (non-case sensitive is handled server-side)
   ws.send(JSON.stringify({ 
     type: 'impostorGuess', 
     guess: input.value.trim() 
@@ -1603,7 +1649,6 @@ function submitWord() {
   input.value = '';
 }
 
-// NEW: Toggle two impostors option
 function toggleTwoImpostorsOption() {
   const checkbox = document.querySelector('#twoImpostorsToggle input[type="checkbox"]');
   if (!checkbox || !ws || ws.readyState !== WebSocket.OPEN) return;
@@ -1624,7 +1669,6 @@ function toggleImpostorGuessOption() {
   }));
 }
 
-// NEW: Update two impostors toggle
 function updateTwoImpostorsToggle() {
   const twoImpostorsToggle = document.getElementById('twoImpostorsToggle');
   if (!twoImpostorsToggle) return;
@@ -1687,9 +1731,8 @@ function showImpostorGuessInfo() {
   alert('When enabled, if the impostor is voted out, they get a 30-second last chance to guess the secret word. If they guess correctly, they win! Otherwise, civilians win.');
 }
 
-// NEW: Show two impostors info
 function showTwoImpostorsInfo() {
-  alert('When enabled, the game will have 2 impostors instead of 1. In voting phase, the top 2 voted players will be ejected. Game winning logic:\n\n• Both impostors voted out → Civilians win\n• No impostors voted out → Impostors win\n• One impostor voted out → Draw\n\nNote: Requires at least 4 players for balanced gameplay.');
+  alert('When enabled, the game will have 2 impostors instead of 1. In voting phase, select 2 players you think are impostors. The top 2 voted players will be ejected. Game winning logic:\n\n• Both impostors voted out → Civilians win\n• No impostors voted out → Impostors win\n• One impostor voted out → Draw\n\nNote: Requires at least 4 players for balanced gameplay.');
 }
 
 join.onclick = () => joinAsPlayer(false);
@@ -1738,27 +1781,6 @@ restart.onclick = () => {
   }
 };
 
-window.vote = (v, btnElement) => {
-  if (isSpectator) return;
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    showConnectionWarning('Connection lost. Please wait for reconnection...');
-    return;
-  }
-  ws.send(JSON.stringify({ type: 'vote', vote: v }));
-  
-  const buttons = document.querySelectorAll('.vote-btn');
-  buttons.forEach(b => {
-    if (b === btnElement) {
-      b.style.background = '#fff';
-      b.style.color = '#000';
-      b.style.fontWeight = 'bold';
-    } else {
-      b.style.opacity = '0.3';
-      b.style.pointerEvents = 'none';
-    }
-  });
-};
-
 nickname.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') joinAsPlayer(false);
 });
@@ -1777,7 +1799,6 @@ input.addEventListener('keypress', (e) => {
   }
 });
 
-// Page lifecycle events for Android/Chrome
 window.addEventListener('pageshow', (e) => {
   if (e.persisted) {
     safeLog('Page restored from bfcache, forcing reconnect');
@@ -1787,7 +1808,6 @@ window.addEventListener('pageshow', (e) => {
   }
 });
 
-// Network online event for Android network switches
 window.addEventListener('online', () => {
   safeLog('Network came online, checking connection');
   if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -1797,7 +1817,6 @@ window.addEventListener('online', () => {
   }
 });
 
-// Periodic connection health check
 setInterval(() => {
   if (gameCard && !gameCard.classList.contains('hidden')) {
     if (ws && ws.readyState !== WebSocket.OPEN) {
@@ -1828,17 +1847,13 @@ window.addEventListener('beforeunload', () => {
 updateConnectionStatus('disconnected');
 safeLog('Game client initialized');
 
-// FIX #1: Auto-connect for lobby browsing AND start auto-refresh
-// This runs immediately when page loads for ALL players
 window.addEventListener('DOMContentLoaded', () => {
   setTimeout(() => {
-    // Only connect if we're not already in a lobby/game
     if (lobbyCard && !lobbyCard.classList.contains('hidden')) {
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         joinType = 'browseLobbies';
         connect();
       } else {
-        // Already connected, just refresh the lobby list
         refreshLobbyList();
       }
       startLobbyListAutoRefresh();
