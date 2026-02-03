@@ -1295,30 +1295,33 @@ wss.on('connection', (ws, req) => {
             const ejectedImpostors = impostors.filter(p => ejectedPlayers.includes(p.name));
             const ejectedImpostorCount = ejectedImpostors.length;
             
-            if (lobby.impostorGuessOption && ejectedImpostorCount === 1 && lobby.twoImpostorsOption) {
-              lobby.phase = 'impostorGuess';
-              const ejectedImpostor = ejectedImpostors[0];
-              
-              broadcast(lobby, {
-                type: 'impostorGuessPhase',
-                ejected: ejectedPlayers,
-                isImpostor: false,
-                guessEndsAt: Date.now() + 30000
-              });
-              
-              if (ejectedImpostor.ws?.readyState === 1) {
-                ejectedImpostor.ws.send(JSON.stringify({
-                  type: 'impostorGuessPhase',
-                  ejected: ejectedPlayers,
-                  isImpostor: true,
-                  guessEndsAt: Date.now() + 30000
-                }));
-              }
-              
-              startImpostorGuessTimer(lobby);
-              
-              return;
-            }
+            if (lobby.impostorGuessOption && ejectedImpostorCount > 0) {
+    lobby.phase = 'impostorGuess';
+    
+    // Send message to civilians and spectators
+    broadcast(lobby, {
+      type: 'impostorGuessPhase',
+      ejected: ejectedPlayers,
+      isImpostor: false,
+      guessEndsAt: Date.now() + 30000
+    });
+    
+    // Send individual messages to each ejected impostor
+    ejectedImpostors.forEach(impostor => {
+      if (impostor.ws?.readyState === 1) {
+        impostor.ws.send(JSON.stringify({
+          type: 'impostorGuessPhase',
+          ejected: ejectedPlayers,
+          isImpostor: true,
+          guessEndsAt: Date.now() + 30000
+        }));
+      }
+    });
+    
+    startImpostorGuessTimer(lobby);
+    
+    return;
+}
             
             let winner;
             if (lobby.twoImpostorsOption) {
