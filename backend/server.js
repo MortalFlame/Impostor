@@ -151,6 +151,7 @@ function removePlayerFromAllLobbies(playerId, reason = 'Joined another lobby') {
         sendRestartUpdates(lobby);
       }
       
+      // Immediately delete empty lobbies
       if (lobby.players.length === 0 && lobby.spectators.length === 0) {
         console.log(`Deleting empty lobby: ${lobbyId}`);
         
@@ -291,6 +292,7 @@ function broadcast(lobby, data) {
 }
 
 function checkGameEndConditions(lobby, lobbyId) {
+  // Include voting phase in game end checks
   if (lobby.phase === 'lobby' || lobby.phase === 'results' || lobby.phase === 'impostorGuess') {
     return false;
   }
@@ -717,6 +719,7 @@ function cleanupLobby(lobby, lobbyId) {
     return true;
   });
   
+  // IMMEDIATELY DELETE EMPTY LOBBIES
   if (lobby.players.length === 0 && lobby.spectators.length === 0) {
     console.log(`Deleting empty lobby: ${lobbyId}`);
     if (lobby.turnTimeout?.timer) {
@@ -952,6 +955,25 @@ wss.on('connection', (ws, req) => {
           
           const wasGameInProgress = (lobby.phase !== 'lobby' && lobby.phase !== 'results');
           
+          // Check if exiting player is an impostor or if this will cause <3 players
+          let shouldEndGameImmediately = false;
+          let endGameReason = '';
+          
+          if (wasGameInProgress && !player.isSpectator) {
+            const connectedPlayersBeforeExit = lobby.players.filter(p => p.ws?.readyState === 1).length;
+            
+            // If player is impostor, end game immediately
+            if (player.role === 'impostor') {
+              shouldEndGameImmediately = true;
+              endGameReason = 'impostor_left';
+            }
+            // If this will leave less than 3 connected players, end game immediately
+            else if (connectedPlayersBeforeExit <= 3) {
+              shouldEndGameImmediately = true;
+              endGameReason = 'not_enough_players';
+            }
+          }
+          
           if (player.isSpectator) {
             lobby.spectators = lobby.spectators.filter(s => s.id !== player.id);
             lobby.spectatorsWantingToJoin = lobby.spectatorsWantingToJoin.filter(id => id !== player.id);
@@ -977,16 +999,29 @@ wss.on('connection', (ws, req) => {
             }
           }
           
+          // End game immediately if conditions are met
+          if (shouldEndGameImmediately && lobby.phase !== 'results' && lobby.phase !== 'lobby') {
+            console.log(`Game ending immediately due to player exit: ${endGameReason}`);
+            endGameEarly(lobby, endGameReason);
+          }
+          
           if (lobby.restartReady.length > 0 || lobby.spectatorsWantingToJoin.length > 0) {
             sendRestartUpdates(lobby);
           }
           
+          // Check if lobby is now empty and delete it
           if (lobby.players.length === 0 && lobby.spectators.length === 0) {
-            delete lobbies[lobbyId];
-          } else {
-            if (wasGameInProgress) {
-              checkGameEndConditions(lobby, lobbyId);
+            console.log(`Deleting empty lobby: ${lobbyId}`);
+            if (lobby.turnTimeout?.timer) {
+              clearTimeout(lobby.turnTimeout.timer);
             }
+            if (lobby.impostorGuessTimeout?.timer) {
+              clearTimeout(lobby.impostorGuessTimeout.timer);
+            }
+            delete lobbies[lobbyId];
+          } else if (!shouldEndGameImmediately && wasGameInProgress) {
+            // Only check game end conditions if we didn't already end the game
+            checkGameEndConditions(lobby, lobbyId);
             
             broadcast(lobby, { 
               type: 'lobbyUpdate', 
@@ -1428,7 +1463,12 @@ wss.on('connection', (ws, req) => {
         const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
         const playersInGame = connectedPlayers.filter(p => p.role);
         
-        if (playersInGame.length >= 3 && lobby.restartReady.length === playersInGame.length) {
+        // Don't wait for disconnected players - only count connected players
+        const readyConnectedPlayers = lobby.restartReady.filter(id => 
+          connectedPlayers.some(p => p.id === id)
+        );
+        
+        if (playersInGame.length >= 3 && readyConnectedPlayers.length === playersInGame.length) {
           const spectatorsToJoin = lobby.spectators.filter(s => 
             s.ws?.readyState === 1 && s.wantsToJoinNextGame
           );
@@ -1821,12 +1861,17 @@ wss.on('connection', (ws, req) => {
     const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
     const playersInGame = connectedPlayers.filter(p => p.role);
     
+    // Filter restartReady to only include connected players
+    const connectedRestartReady = lobby.restartReady.filter(id => 
+      connectedPlayers.some(p => p.id === id)
+    );
+    
     lobby.players.forEach(p => {
       if (p.ws?.readyState === 1) {
         try {
           p.ws.send(JSON.stringify({
             type: 'restartUpdate',
-            readyCount: lobby.restartReady.length,
+            readyCount: connectedRestartReady.length,
             totalPlayers: playersInGame.length,
             spectatorsWantingToJoin: lobby.spectatorsWantingToJoin.length,
             isSpectator: false,
@@ -1843,7 +1888,7 @@ wss.on('connection', (ws, req) => {
         try {
           s.ws.send(JSON.stringify({
             type: 'restartUpdate',
-            readyCount: lobby.restartReady.length,
+            readyCount: connectedRestartReady.length,
             totalPlayers: playersInGame.length,
             spectatorsWantingToJoin: lobby.spectatorsWantingToJoin.length,
             isSpectator: true,
