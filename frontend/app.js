@@ -1049,6 +1049,7 @@ function connect() {
           }
         }
 
+        // FIXED: gameStart handler - preserve spectator join state
         if (d.type === 'gameStart') {
           lobbyCard.classList.add('hidden');
           gameCard.classList.remove('hidden');
@@ -1056,7 +1057,8 @@ function connect() {
           exitLobbyBtn.style.display = 'block';
           
           hasClickedRestart = false;
-          spectatorHasClickedRestart = false;
+          // FIX: DO NOT reset spectatorHasClickedRestart here - keep it across game phases
+          // spectatorHasClickedRestart = false;
           spectatorWantsToJoin = false;
           isEjectedImpostor = false; // Reset ejected impostor state
           
@@ -1083,7 +1085,7 @@ function connect() {
             restart.disabled = false;
             restart.style.opacity = '1';
             spectatorWantsToJoin = false;
-            spectatorHasClickedRestart = false;
+            // DO NOT reset: spectatorHasClickedRestart = false;
           } else {
             restart.innerText = 'Restart Game';
             restart.classList.add('hidden');
@@ -1551,10 +1553,12 @@ function connect() {
           turnEl.textContent = isSpectator ? 'Spectating - Game Over' : 'Game Over - Results';
         }
 
+        // FIXED: restartUpdate handler to better handle spectator state
         if (d.type === 'restartUpdate') {
           if (d.isSpectator) {
-            // FIX: Update spectator state based on server response
-            spectatorWantsToJoin = d.wantsToJoin || false;
+            // IMPORTANT: Update spectator state based on server response
+            // If we've clicked join next game before, maintain that state
+            spectatorWantsToJoin = d.wantsToJoin || spectatorHasClickedRestart;
             
             if (spectatorHasClickedRestart && spectatorWantsToJoin) {
               restart.innerText = `Joining next game... (${d.readyCount}/${d.totalPlayers} players ready)`;
@@ -1568,7 +1572,10 @@ function connect() {
               restart.innerText = 'Join Next Game';
               restart.disabled = false;
               restart.style.opacity = '1';
-              spectatorHasClickedRestart = false;
+              // Only reset spectatorHasClickedRestart if the server explicitly says we're not wanting to join
+              if (!d.wantsToJoin) {
+                spectatorHasClickedRestart = false;
+              }
             }
           } else {
             if (d.playerRole) {
@@ -1597,14 +1604,23 @@ function connect() {
           }
         }
 
+        // FIXED: roleChanged handler to properly remove eye icon
         if (d.type === 'roleChanged') {
           isSpectator = false;
           spectatorWantsToJoin = false;
           spectatorHasClickedRestart = false;
-          hasClickedRestart = false; // Also reset player restart state
+          hasClickedRestart = false;
           
-          // FIX: Remove eye icon and enable nickname field
-          nickname.value = nickname.value.replace('👁️ ', '');
+          // Use server-provided name if available
+          if (d.playerName) {
+            myPlayerName = d.playerName;
+          } else {
+            // Fallback to cleaning the current nickname
+            myPlayerName = nickname.value.replace('👁️ ', '').trim();
+          }
+          
+          // FIX: Properly remove eye icon and any spectator indicators
+          nickname.value = myPlayerName;
           nickname.disabled = false;
           
           if (document.getElementById('playerNameDisplay')) {
@@ -1619,6 +1635,11 @@ function connect() {
           // Also update the restart button in the game if we're in results phase
           if (gameCard && !gameCard.classList.contains('hidden')) {
             restart.classList.remove('hidden');
+          }
+          
+          // FIX: Also update the nickname field in the lobby card if it's visible
+          if (lobbyCard && !lobbyCard.classList.contains('hidden')) {
+            nickname.value = myPlayerName;
           }
         }
 
