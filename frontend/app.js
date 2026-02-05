@@ -1552,7 +1552,7 @@ function connect() {
           hasClickedRestart = false;
           
           if (d.playerName) {
-            myPlayerName = d.playerName;
+            myPlayerName = d.playerName.replace('👁️ ', '').trim();
           } else {
             myPlayerName = nickname.value.replace('👁️ ', '').trim();
           }
