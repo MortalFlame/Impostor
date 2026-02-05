@@ -439,6 +439,26 @@ function endGameEarly(lobby, reason) {
     reason
   });
   
+  // ADD: Send individual messages to spectators with their join state
+lobby.spectators.forEach(s => {
+  if (s.ws?.readyState === 1) {
+    try {
+      s.ws.send(JSON.stringify({
+        type: 'gameEndEarly',
+        roles: lobby.players.map(p => ({ name: p.name, role: p.role })),
+        secretWord: lobby.word,
+        hint: lobby.hint,
+        winner,
+        reason,
+        isSpectator: true,
+        wantsToJoinNextGame: s.wantsToJoinNextGame || false  // ← ADD THIS
+      }));
+    } catch (err) {
+      console.log(`Failed to send gameEndEarly to spectator ${s.name}`);
+    }
+  }
+});
+  
   lobby.phase = 'results';
   lobby.lastTimeBelowThreePlayers = null;
   lobby.ejectedPlayers = null;
@@ -775,6 +795,29 @@ function startImpostorGuessTimer(lobby) {
         impostorGuesses: lobby.impostorGuesses || {},
         twoImpostorsMode: lobby.twoImpostorsOption || false
       });
+      
+      // ADD: Send individual messages to spectators with their join state
+lobby.spectators.forEach(s => {
+  if (s.ws?.readyState === 1) {
+    try {
+      s.ws.send(JSON.stringify({
+        type: 'gameEnd',
+        roles: lobby.players.map(p => ({ name: p.name, role: p.role })),
+        votes: Object.fromEntries(lobby.players.filter(p => p.vote).map(p => [p.name, p.vote])),
+        secretWord: lobby.word,
+        hint: lobby.hint,
+        winner,
+        reason: 'impostorGuessTimeout',
+        impostorGuesses: lobby.impostorGuesses || {},
+        twoImpostorsMode: lobby.twoImpostorsOption || false,
+        isSpectator: true,
+        wantsToJoinNextGame: s.wantsToJoinNextGame || false  // ← ADD THIS
+      }));
+    } catch (err) {
+      console.log(`Failed to send gameEnd (timeout) to spectator ${s.name}`);
+    }
+  }
+});
       
       lobby.phase = 'results';
       lobby.lastTimeBelowThreePlayers = null;
@@ -1609,6 +1652,28 @@ wss.on('connection', (ws, req) => {
               winner,
               twoImpostorsMode: lobby.twoImpostorsOption || false
             });
+            
+            // ADD: Send individual messages to spectators with their join state
+lobby.spectators.forEach(s => {
+  if (s.ws?.readyState === 1) {
+    try {
+      s.ws.send(JSON.stringify({
+        type: 'gameEnd',
+        roles: lobby.players.map(p => ({ name: p.name, role: p.role })),
+        votes: Object.fromEntries(connectedPlayers.map(p => [p.name, p.vote])),
+        ejected: ejectedPlayers,
+        secretWord: lobby.word,
+        hint: lobby.hint,
+        winner,
+        twoImpostorsMode: lobby.twoImpostorsOption || false,
+        isSpectator: true,
+        wantsToJoinNextGame: s.wantsToJoinNextGame || false  // ← ADD THIS
+      }));
+    } catch (err) {
+      console.log(`Failed to send gameEnd to spectator ${s.name}`);
+    }
+  }
+});
             
             lobby.phase = 'results';
             lobby.lastTimeBelowThreePlayers = null;
