@@ -1041,13 +1041,21 @@ function connect() {
           restart.style.opacity = '1';
           
           if (isSpectator || d.role === 'spectator') {
-            restart.innerText = 'Join Next Game';
-            restart.classList.remove('hidden');
-            restart.disabled = false;
-            restart.style.opacity = '1';
-          } else {
-            restart.innerText = 'Restart Game';
-            restart.classList.add('hidden');
+           if (d.wantsToJoinNextGame) {
+      spectatorWantsToJoin = true;
+      spectatorHasClickedRestart = true;
+      restart.innerText = 'Joining next game...';
+      restart.disabled = true;
+      restart.style.opacity = '0.7';
+    } else {
+      restart.innerText = 'Join Next Game';
+      restart.disabled = false;
+      restart.style.opacity = '1';
+    }
+    restart.classList.remove('hidden');
+  } else {
+    restart.innerText = 'Restart Game';
+    restart.classList.add('hidden');
           }
           
           input.value = '';
@@ -1300,15 +1308,15 @@ function connect() {
           if (isSpectator) {
             restart.classList.remove('hidden');
             if (spectatorWantsToJoin || spectatorHasClickedRestart) {
-              restart.innerText = 'Joining next game...';
-              restart.disabled = true;
-              restart.style.opacity = '0.7';
-            } else {
-              restart.innerText = 'Join Next Game';
-              restart.disabled = false;
-              restart.style.opacity = '1';
-            }
-          } else if (myRoleInfo) {
+    restart.innerText = 'Joining next game...';
+    restart.disabled = true;
+    restart.style.opacity = '0.7';
+  } else {
+    restart.innerText = 'Join Next Game';
+    restart.disabled = false;
+    restart.style.opacity = '1';
+  }
+} else if (myRoleInfo) {
             restart.classList.remove('hidden');
             restart.innerText = 'Restart Game';
             restart.disabled = false;
@@ -1476,15 +1484,15 @@ function connect() {
           if (isSpectator) {
             restart.classList.remove('hidden');
             if (spectatorWantsToJoin || spectatorHasClickedRestart) {
-              restart.innerText = 'Joining next game...';
-              restart.disabled = true;
-              restart.style.opacity = '0.7';
-            } else {
-              restart.innerText = 'Join Next Game';
-              restart.disabled = false;
-              restart.style.opacity = '1';
-            }
-          } else if (myRoleInfo) {
+    restart.innerText = 'Joining next game...';
+    restart.disabled = true;
+    restart.style.opacity = '0.7';
+  } else {
+    restart.innerText = 'Join Next Game';
+    restart.disabled = false;
+    restart.style.opacity = '1';
+  }
+} else if (myRoleInfo) {
             restart.classList.remove('hidden');
             restart.innerText = 'Restart Game';
             restart.disabled = false;
