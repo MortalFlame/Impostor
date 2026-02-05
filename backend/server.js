@@ -419,10 +419,12 @@ function startGame(lobby) {
   lobby.ejectedPlayers = null;
   lobby.impostorGuesses = null;
 
-  // Reset wantsToJoinNextGame for all spectators when a new game starts
+  // IMPORTANT FIX: Do NOT reset wantsToJoinNextGame for spectators when starting a new game
+  // Spectators should keep their join next game state across games
+  // Only reset it when they actually join as players
   lobby.spectators.forEach(s => {
     s.vote = '';
-    s.wantsToJoinNextGame = false;
+    // DO NOT reset wantsToJoinNextGame here - let it persist
   });
   
   // Clear spectatorsWantingToJoin after processing
@@ -1607,7 +1609,7 @@ wss.on('connection', (ws, req) => {
             if (spectatorIndex !== -1) {
               lobby.spectators.splice(spectatorIndex, 1);
               spectator.isSpectator = false;
-              spectator.wantsToJoinNextGame = false;
+              spectator.wantsToJoinNextGame = false; // Reset only for spectators who are joining
               spectator.role = null;
               spectator.vote = [];
               lobby.players.push(spectator);
@@ -1870,9 +1872,15 @@ wss.on('connection', (ws, req) => {
       player.connectionEpoch = (player.connectionEpoch || 0) + 1;
       ws.connectionEpoch = player.connectionEpoch;
       
-      // Restore wantsToJoinNextGame from the spectator object
+      // IMPORTANT FIX: Restore wantsToJoinNextGame from the spectator object
+      // and also update the lobby's spectatorsWantingToJoin list
       if (player.wantsToJoinNextGame && !lobby.spectatorsWantingToJoin.includes(player.id)) {
         lobby.spectatorsWantingToJoin.push(player.id);
+      }
+      
+      // Also ensure the spectator object reflects the lobby state
+      if (lobby.spectatorsWantingToJoin.includes(player.id)) {
+        player.wantsToJoinNextGame = true;
       }
     } else {
       // New spectator
@@ -1910,9 +1918,33 @@ wss.on('connection', (ws, req) => {
       }, 100);
     }
 
-    // DO NOT send restart updates when spectator reconnects
-    // This prevents triggering a new game restart
-    
+    // Send restart state update to the reconnected spectator if in results phase
+    if ((lobby.phase === 'results' || lobby.phase === 'lobby') && player.wantsToJoinNextGame) {
+      setTimeout(() => {
+        if (player.ws?.readyState === 1) {
+          try {
+            const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
+            const playersInGame = connectedPlayers.filter(p => p.role);
+            const readyConnectedPlayers = lobby.restartReady.filter(id => 
+              connectedPlayers.some(p => p.id === id)
+            );
+            
+            player.ws.send(JSON.stringify({
+              type: 'restartUpdate',
+              readyCount: readyConnectedPlayers.length,
+              totalPlayers: playersInGame.length,
+              spectatorsWantingToJoin: lobby.spectatorsWantingToJoin.length,
+              isSpectator: true,
+              wantsToJoin: player.wantsToJoinNextGame,
+              status: player.wantsToJoinNextGame ? 'joining' : 'waiting'
+            }));
+          } catch (err) {
+            console.log(`Failed to send restart update to reconnected spectator ${player.name}`);
+          }
+        }
+      }, 500);
+    }
+
     ws.send(JSON.stringify({ 
       type: 'lobbyAssigned', 
       lobbyId: lobbyId,
