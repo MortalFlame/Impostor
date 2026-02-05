@@ -450,6 +450,11 @@ function endGameEarly(lobby, reason) {
 }
 
 function startGame(lobby) {
+  lobby.players.forEach(p => {
+  p.role = null;
+  p.vote = [];
+  p.lastDisconnectTime = null;
+});
   const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
   if (connectedPlayers.length < 3) {
     console.log(`Not enough connected players to start (${connectedPlayers.length} connected)`);
@@ -469,12 +474,6 @@ function startGame(lobby) {
   lobby.lastTimeBelowThreePlayers = null;
   lobby.ejectedPlayers = null;
   lobby.impostorGuesses = null;
-
-  // Reset join intent for all spectators since a new game is starting without them
-  lobby.spectatorsWantingToJoin = [];
-  lobby.spectators.forEach(s => {
-    s.wantsToJoinNextGame = false;
-  });
   
   const { word, hint } = getRandomWord(lobby);
   lobby.word = word;
@@ -492,20 +491,20 @@ function startGame(lobby) {
   // This preserves roles for reconnecting players
   const playersWithoutRoles = lobby.players.filter(p => !p.role && p.ws?.readyState === 1);
   
-  if (lobby.twoImpostorsOption && playersWithoutRoles.length >= 4) {
+  if (lobby.twoImpostorsOption && connectedPlayers.length >= 4) {
     // Assign 2 impostors
     const impostorIndices = new Set();
     while (impostorIndices.size < 2) {
-      impostorIndices.add(Math.floor(Math.random() * playersWithoutRoles.length));
+      impostorIndices.add(Math.floor(Math.random() * connectedPlayers.length));
     }
     
-    playersWithoutRoles.forEach((player, i) => {
+    connectedPlayers.forEach((player, i) => {
       player.role = impostorIndices.has(i) ? 'impostor' : 'civilian';
     });
   } else {
     // Assign 1 impostor
-    const impostorIndex = Math.floor(Math.random() * playersWithoutRoles.length);
-    playersWithoutRoles.forEach((player, i) => {
+    const impostorIndex = Math.floor(Math.random() * connectedPlayers.length);
+    connectedPlayers.forEach((player, i) => {
       player.role = i === impostorIndex ? 'impostor' : 'civilian';
     });
   }
@@ -1818,11 +1817,11 @@ wss.on('connection', (ws, req) => {
               spectator.vote = [];
               lobby.players.push(spectator);
               
-              // Ensure the name doesn't have spectator prefix or eye icon
-              let cleanName = spectator.name;
-              if (cleanName.startsWith('Spectator-')) {
-                // Keep as is for now, but we could extract original name
-              }
+              // FIX: Clean the name by removing eye icon and "Spectator-" prefix
+let cleanName = spectator.name;
+cleanName = cleanName.replace('👁️ ', ''); // Remove eye icon
+cleanName = cleanName.replace(/^Spectator-\d+$/, 'Player'); // Remove auto-generated spectator name
+spectator.name = cleanName; // ← Update the actual player object
               
               try {
                 spectator.ws.send(JSON.stringify({
