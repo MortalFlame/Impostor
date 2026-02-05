@@ -540,6 +540,7 @@ function startGame(lobby) {
           hint: hint,
           isSpectator: true,
           playerName: s.name
+          wantsToJoinNextGame: s.wantsToJoinNextGame || false
         }));
         
         // Also send restart update to preserve join state display
