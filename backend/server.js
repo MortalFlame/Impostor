@@ -470,8 +470,11 @@ function startGame(lobby) {
   lobby.ejectedPlayers = null;
   lobby.impostorGuesses = null;
 
-  // CRITICAL FIX: Do NOT reset wantsToJoinNextGame for spectators when starting a new game
-  // Keep the spectator's join intent across the entire game lifecycle
+  // Reset join intent for all spectators since a new game is starting without them
+  lobby.spectatorsWantingToJoin = [];
+  lobby.spectators.forEach(s => {
+    s.wantsToJoinNextGame = false;
+  });
   
   const { word, hint } = getRandomWord(lobby);
   lobby.word = word;
@@ -1161,14 +1164,15 @@ wss.on('connection', (ws, req) => {
           
           if (wasGameInProgress && !player.isSpectator) {
             const connectedPlayersBeforeExit = lobby.players.filter(p => p.ws?.readyState === 1).length;
+            const connectedPlayersAfterExit = connectedPlayersBeforeExit - 1;
             
             // If player is impostor, end game immediately (FIX: No grace period for manual exit)
             if (player.role === 'impostor') {
               shouldEndGameImmediately = true;
               endGameReason = 'impostor_left';
             }
-            // If this will leave less than 3 connected players, end game immediately
-            else if (connectedPlayersBeforeExit <= 3) {
+            // If after exit fewer than 3 players remain, end game immediately
+            else if (connectedPlayersAfterExit < 3) {
               shouldEndGameImmediately = true;
               endGameReason = 'not_enough_players';
             }
@@ -1770,7 +1774,7 @@ wss.on('connection', (ws, req) => {
         
         // First, check if all previous game players are accounted for
         const disconnectedPlayersRemaining = playersInGame.filter(p => 
-          !p.ws?.readyState === 1 && p.lastDisconnectTime && 
+          p.ws?.readyState !== 1 && p.lastDisconnectTime && 
           (Date.now() - p.lastDisconnectTime <= RESULTS_GRACE_PERIOD)
         );
         
@@ -2084,16 +2088,11 @@ wss.on('connection', (ws, req) => {
       player.connectionEpoch = (player.connectionEpoch || 0) + 1;
       ws.connectionEpoch = player.connectionEpoch;
       
-      // CRITICAL FIX: Properly restore wantsToJoinNextGame state
-      // First, check if the spectator was in the spectatorsWantingToJoin list
+      // FIXED: Always restore spectator intent from the server's source of truth
       const wasWantingToJoin = lobby.spectatorsWantingToJoin.includes(player.id);
+      player.wantsToJoinNextGame = wasWantingToJoin;
       
-      // Restore the state from the spectator object
-      if (player.wantsToJoinNextGame === undefined) {
-        player.wantsToJoinNextGame = wasWantingToJoin;
-      }
-      
-      // Ensure the lobby state reflects the spectator's state
+      // Ensure the lobby state reflects the spectator's state (should already be true, but double-check)
       if (player.wantsToJoinNextGame && !lobby.spectatorsWantingToJoin.includes(player.id)) {
         lobby.spectatorsWantingToJoin.push(player.id);
       } else if (!player.wantsToJoinNextGame && lobby.spectatorsWantingToJoin.includes(player.id)) {
