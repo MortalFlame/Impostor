@@ -385,7 +385,7 @@ function getPlayersInGame(lobby) {
   console.log(`getPlayersInGame: ${result.length}/${lobby.players.length} total players`);
   return result;
 }
-}
+
 
 function checkGameEndConditions(lobby, lobbyId) {
   // Don't check during lobby, results, or impostor guess phases
