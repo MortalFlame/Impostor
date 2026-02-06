@@ -314,7 +314,13 @@ function makeNameUnique(baseName, existingNames, id) {
 }
 
 function replaceSocket(player, newWs) {
-  if (player.ws && player.ws !== newWs && player.ws.readyState === 1) {
+  if (player.ws && player.ws !== newWs) {
+    // Mark as disconnected if we're replacing an active socket
+    if (player.ws.readyState === 1 && !player.removed) {
+      player.lastDisconnectTime = Date.now();
+      console.log(`DISCONNECT TRACKING: ${player.name} socket replaced, marking disconnect time`);
+    }
+    
     try {
       player.ws.onmessage = null;
       player.ws.onclose = null;
@@ -324,6 +330,7 @@ function replaceSocket(player, newWs) {
       // Ignore close errors
     }
   }
+  
   player.ws = newWs;
 }
 
@@ -1291,6 +1298,15 @@ wss.on('connection', (ws, req) => {
           
           const wasGameInProgress = (lobby.phase !== 'lobby' && lobby.phase !== 'results');
           
+          // FIX: Mark player as removed BEFORE checking conditions
+          if (player.isSpectator) {
+            player.removed = true;
+            player.lastDisconnectTime = null; // Clear disconnect time since it's manual exit
+          } else {
+            player.removed = true;
+            player.lastDisconnectTime = null; // Clear disconnect time since it's manual exit
+          }
+          
           // Check if exiting player is an impostor or if this will cause <3 players
           let shouldEndGameImmediately = false;
           let endGameReason = '';
@@ -1313,12 +1329,10 @@ wss.on('connection', (ws, req) => {
           
           if (player.isSpectator) {
             // Mark spectator as removed (manual exit, no grace)
-            player.removed = true;
             lobby.spectators = lobby.spectators.filter(s => s.id !== player.id);
             lobby.spectatorsWantingToJoin = lobby.spectatorsWantingToJoin.filter(id => id !== player.id);
           } else {
             // Mark player as removed (manual exit, no grace)
-            player.removed = true;
             lobby.players = lobby.players.filter(p => p.id !== player.id);
             lobby.restartReady = lobby.restartReady.filter(id => id !== player.id);
             
@@ -2078,16 +2092,23 @@ wss.on('connection', (ws, req) => {
     if (lobbyId && lobbies[lobbyId] && player) {
       const lobby = lobbies[lobbyId];
       
-      // FIX: Proper connection epoch check
-      if (player.connectionEpoch && ws.connectionEpoch !== player.connectionEpoch) {
-        console.log(`Ignoring close from stale socket for player ${player.name} (epoch mismatch)`);
-        return;
+      // FIX: Check epoch mismatch but still track disconnect time
+      const isStaleSocket = player.connectionEpoch && ws.connectionEpoch !== player.connectionEpoch;
+      
+      if (isStaleSocket) {
+        console.log(`Close from stale socket for player ${player.name} (epoch mismatch)`);
+        // Still set lastDisconnectTime if not already set (this handles the case where old socket closes after reconnect)
+        if (!player.lastDisconnectTime && !player.removed) {
+          player.lastDisconnectTime = Date.now();
+          console.log(`DISCONNECT TRACKING: ${player.name} disconnect time set from stale socket`);
+        }
+        return; // Don't broadcast or check game end for stale sockets
       }
       
       // Only mark as disconnected if not manually removed
       if (!player.removed) {
         player.lastDisconnectTime = Date.now();
-        console.log(`DISCONNECT: ${player.name} disconnected at ${player.lastDisconnectTime}, phase: ${lobby.phase}`); // ← ADD THIS
+        console.log(`DISCONNECT: ${player.name} disconnected at ${player.lastDisconnectTime}, phase: ${lobby.phase}`);
       }
       
       const wasGameInProgress = (lobby.phase !== 'lobby' && lobby.phase !== 'results' && lobby.phase !== 'impostorGuess');
@@ -2136,7 +2157,11 @@ wss.on('connection', (ws, req) => {
       // Player is reconnecting - keep their existing game state
       player = existingPlayer;
       replaceSocket(player, ws);
+      
+      // FIX: Reset disconnect time and removed flag on successful reconnection
       player.lastDisconnectTime = null;
+      player.removed = false; // ← ADD THIS
+      
       player.connectionId = connectionId;
       player.reconnectionAttempts = (player.reconnectionAttempts || 0) + 1;
       player.connectionEpoch = (player.connectionEpoch || 0) + 1;
@@ -2249,7 +2274,11 @@ wss.on('connection', (ws, req) => {
       console.log(`Player ${existingPlayer.name} reconnecting as player (not spectator) to lobby ${targetLobbyId}`);
       player = existingPlayer;
       replaceSocket(player, ws);
+      
+      // FIX: Reset disconnect time and removed flag on successful reconnection
       player.lastDisconnectTime = null;
+      player.removed = false; // ← ADD THIS
+      
       player.connectionId = connectionId;
       player.connectionEpoch = (player.connectionEpoch || 0) + 1;
       ws.connectionEpoch = player.connectionEpoch;
@@ -2302,7 +2331,11 @@ wss.on('connection', (ws, req) => {
     if (existingSpectator) {
       player = existingSpectator;
       replaceSocket(player, ws);
+      
+      // FIX: Reset disconnect time and removed flag on successful reconnection
       player.lastDisconnectTime = null;
+      player.removed = false; // ← ADD THIS
+      
       player.connectionId = connectionId;
       player.connectionEpoch = (player.connectionEpoch || 0) + 1;
       ws.connectionEpoch = player.connectionEpoch;
