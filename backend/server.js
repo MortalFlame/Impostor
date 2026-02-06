@@ -552,7 +552,49 @@ function startGame(lobby) {
   lobby.word = word;
   lobby.hint = hint;
 
+  // Shuffle connected players for random impostor selection
   const shuffledConnectedPlayers = [...connectedPlayers].sort(() => Math.random() - 0.5);
+
+  // ASSIGN ROLES TO ALL CONNECTED PLAYERS (not filtered by existing roles)
+  if (lobby.twoImpostorsOption && connectedPlayers.length >= 4) {
+    // Assign 2 impostors
+    const impostorIndices = new Set();
+    while (impostorIndices.size < 2) {
+      impostorIndices.add(Math.floor(Math.random() * connectedPlayers.length));
+    }
+    
+    connectedPlayers.forEach((player, i) => {
+      player.role = impostorIndices.has(i) ? 'impostor' : 'civilian';
+      console.log(`  Assigned role ${player.role} to ${player.name}`);
+    });
+  } else {
+    // Assign 1 impostor
+    const impostorIndex = Math.floor(Math.random() * connectedPlayers.length);
+    connectedPlayers.forEach((player, i) => {
+      player.role = i === impostorIndex ? 'impostor' : 'civilian';
+      console.log(`  Assigned role ${player.role} to ${player.name}`);
+    });
+  }
+
+  // Send game start to all players
+  lobby.players.forEach(player => {
+    if (player.ws?.readyState === 1) {
+      try {
+        const wordToSend = player.role === 'civilian' ? word : 
+                          player.role === 'impostor' ? hint : 
+                          word;
+        
+        player.ws.send(JSON.stringify({
+          type: 'gameStart',
+          role: player.role,
+          word: wordToSend,
+          playerName: player.name
+        }));
+      } catch (err) {
+        console.log(`Failed to send gameStart to ${player.name}`);
+      }
+    }
+  });
   
   // Reset votes for all players
   lobby.players.forEach(p => {
@@ -2079,10 +2121,10 @@ wss.on('connection', (ws, req) => {
       const lobby = lobbies[lobbyId];
       
       // FIX: Proper connection epoch check
-      if (player.connectionEpoch && ws.connectionEpoch !== player.connectionEpoch) {
-        console.log(`Ignoring close from stale socket for player ${player.name} (epoch mismatch)`);
-        return;
-      }
+     // if (player.connectionEpoch && ws.connectionEpoch !== player.connectionEpoch) {
+       // console.log(`Ignoring close from stale socket for player ${player.name} (epoch mismatch)`);
+        //return;
+      //}
       
       // Only mark as disconnected if not manually removed
       if (!player.removed) {
