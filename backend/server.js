@@ -596,57 +596,7 @@ function startGame(lobby) {
     }
   });
   
-  // Reset votes for all players
-  lobby.players.forEach(p => {
-    p.vote = [];
-    p.lastDisconnectTime = null;
-    p.removed = false;
-    p.submittedWord = false;
-  });
-  
-  // Assign roles - only assign to players who don't already have roles
-  // This preserves roles for reconnecting players
-  const playersWithoutRoles = lobby.players.filter(p => !p.role && p.ws?.readyState === 1);
-  
-  if (lobby.twoImpostorsOption && connectedPlayers.length >= 4) {
-    // Assign 2 impostors
-    const impostorIndices = new Set();
-    while (impostorIndices.size < 2) {
-      impostorIndices.add(Math.floor(Math.random() * connectedPlayers.length));
-    }
-    
-    connectedPlayers.forEach((player, i) => {
-      player.role = impostorIndices.has(i) ? 'impostor' : 'civilian';
-    });
-  } else {
-    // Assign 1 impostor
-    const impostorIndex = Math.floor(Math.random() * connectedPlayers.length);
-    connectedPlayers.forEach((player, i) => {
-      player.role = i === impostorIndex ? 'impostor' : 'civilian';
-    });
-  }
-  
-  // Send game start to all players
-  lobby.players.forEach(player => {
-    if (player.ws?.readyState === 1) {
-      try {
-        const wordToSend = player.role === 'civilian' ? word : 
-                          player.role === 'impostor' ? hint : 
-                          word;
-        
-        player.ws.send(JSON.stringify({
-          type: 'gameStart',
-          role: player.role,
-          word: wordToSend,
-          playerName: player.name
-        }));
-      } catch (err) {
-        console.log(`Failed to send gameStart to ${player.name}`);
-      }
-    }
-  });
-
-  // Send game state to spectators
+   // Send game state to spectators
   lobby.spectators.forEach(s => {
     if (s.ws?.readyState === 1) {
       try {
@@ -770,21 +720,33 @@ function skipCurrentPlayer(lobby, isTimeout = false) {
     });
   }
   
+  // FIX: Give turn to ALL players in game (including disconnected within grace period)
   let nextIndex = (lobby.turn + 1) % lobby.players.length;
   let attempts = 0;
   
   while (attempts < lobby.players.length) {
-    if (lobby.players[nextIndex]?.ws?.readyState === 1) {
-      lobby.turn = nextIndex;
-      break;
+    const nextPlayer = lobby.players[nextIndex];
+    
+    // Check if player is still in the game (has role, not removed, within grace period)
+    if (nextPlayer && nextPlayer.role && !nextPlayer.removed) {
+      const now = Date.now();
+      const isConnected = nextPlayer.ws?.readyState === 1;
+      const withinGracePeriod = nextPlayer.lastDisconnectTime && 
+                                (now - nextPlayer.lastDisconnectTime <= GAME_GRACE_PERIOD);
+      
+      if (isConnected || withinGracePeriod) {
+        lobby.turn = nextIndex;
+        console.log(`Turn advanced to ${nextPlayer.name} (connected: ${isConnected}, grace: ${withinGracePeriod})`);
+        break;
+      }
     }
+    
     nextIndex = (nextIndex + 1) % lobby.players.length;
     attempts++;
   }
   
   if (attempts >= lobby.players.length) {
     console.log('No connected players found to take turn');
-    // Check if we should end the game early
     const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
     if (connectedPlayers.length === 0) {
       console.log('All players disconnected during turn, ending game early');
@@ -793,7 +755,6 @@ function skipCurrentPlayer(lobby, isTimeout = false) {
     return;
   }
   
-  // FIX: Use players who are still in the game (not removed and grace not expired)
   const playersInGame = getPlayersInGame(lobby);
   
   if (lobby.phase === 'round1') {
@@ -1589,6 +1550,7 @@ wss.on('connection', (ws, req) => {
         
         console.log(`submitWord: ${player.name} submitted "${sanitizedWord}"`);
         console.log(`  Phase: ${lobby.phase}`);
+        console.log(`Round1: ${lobby.round1.length}, Round2: ${lobby.round2.length}, PlayersInGame: ${playersInGame.length}`);
         console.log(`  Submissions: ${lobby.phase === 'round1' ? lobby.round1.length : lobby.round2.length}`);
         console.log(`  Players in game: ${playersInGame.length}`);
         console.log(`  Checking: ${lobby.phase === 'round1' ? lobby.round1.length : lobby.round2.length} >= ${playersInGame.length}`);
@@ -1640,15 +1602,32 @@ wss.on('connection', (ws, req) => {
         let attempts = 0;
         
         while (attempts < lobby.players.length) {
-          if (lobby.players[nextIndex]?.ws?.readyState === 1) {
-            lobby.turn = nextIndex;
-            break;
-          }
-          nextIndex = (nextIndex + 1) % lobby.players.length;
-          attempts++;
-        }
-        
-        startTurnTimer(lobby);
+    const nextPlayer = lobby.players[nextIndex];
+    
+    // Check if player is still in the game (has role, not removed, within grace period)
+    if (nextPlayer && nextPlayer.role && !nextPlayer.removed) {
+      const now = Date.now();
+      const isConnected = nextPlayer.ws?.readyState === 1;
+      const withinGracePeriod = nextPlayer.lastDisconnectTime && 
+                                (now - nextPlayer.lastDisconnectTime <= GAME_GRACE_PERIOD);
+      
+      if (isConnected || withinGracePeriod) {
+        lobby.turn = nextIndex;
+        console.log(`Turn advanced to ${nextPlayer.name} (connected: ${isConnected}, grace: ${withinGracePeriod})`);
+        break;
+      }
+    }
+    
+    nextIndex = (nextIndex + 1) % lobby.players.length;
+    attempts++;
+  }
+  
+  if (attempts >= lobby.players.length) {
+    console.log('ERROR: No valid player found for next turn');
+    return;
+  }
+  
+  startTurnTimer(lobby);
       }
 
       if (msg.type === 'vote') {
@@ -2119,6 +2098,18 @@ wss.on('connection', (ws, req) => {
     
     if (lobbyId && lobbies[lobbyId] && player) {
       const lobby = lobbies[lobbyId];
+
+      const isSpectator = lobby.spectators.some(s => s.id === player.id);
+    
+    if (!player.removed) {
+      player.lastDisconnectTime = Date.now();
+      console.log(`DISCONNECT: ${player.name} disconnected at ${player.lastDisconnectTime}, phase: ${lobby.phase}, isSpectator: ${isSpectator}`);
+      
+      if (isSpectator) {
+        console.log(`  Spectator wantsToJoinNextGame: ${player.wantsToJoinNextGame}`);
+        console.log(`  spectatorsWantingToJoin array:`, lobby.spectatorsWantingToJoin);
+      }
+    }
       
       // FIX: Proper connection epoch check
      // if (player.connectionEpoch && ws.connectionEpoch !== player.connectionEpoch) {
@@ -2342,6 +2333,12 @@ wss.on('connection', (ws, req) => {
     // Check for existing spectator
     let existingSpectator = lobby.spectators.find(s => s.id === msg.playerId);
     if (existingSpectator) {
+    console.log(`========== SPECTATOR RECONNECT ==========`);
+    console.log(`Spectator: ${existingSpectator.name}`);
+    console.log(`Lobby phase: ${lobby.phase}`);
+    console.log(`spectatorsWantingToJoin array BEFORE:`, lobby.spectatorsWantingToJoin);
+    console.log(`Spectator was wanting to join: ${lobby.spectatorsWantingToJoin.includes(existingSpectator.id)}`);
+      
       player = existingSpectator;
       replaceSocket(player, ws);
       player.lastDisconnectTime = null;
@@ -2368,8 +2365,16 @@ wss.on('connection', (ws, req) => {
       console.log(`  wasWantingToJoin: ${wasWantingToJoin}`);
       console.log(`  player.wantsToJoinNextGame: ${player.wantsToJoinNextGame}`);
       console.log(`  lobby.phase: ${lobby.phase}`);
+       console.log(`player.wantsToJoinNextGame AFTER restore: ${player.wantsToJoinNextGame}`);
+    console.log(`spectatorsWantingToJoin array AFTER:`, lobby.spectatorsWantingToJoin);
+    console.log(`========================================`);
+      
     } else {
       // New spectator
+      console.log(`========== NEW SPECTATOR ==========`);
+    console.log(`Name: ${msg.name}`);
+    console.log(`Lobby: ${targetLobbyId}, Phase: ${lobby.phase}`);
+    console.log(`===================================`);
       const allNames = [...lobby.players, ...lobby.spectators].map(p => p.name);
       const baseName = sanitizeInput(msg.name || `Spectator-${Math.floor(Math.random() * 1000)}`, 20);
       let uniqueName = baseName.trim();
@@ -2416,6 +2421,7 @@ wss.on('connection', (ws, req) => {
               lobby.players.some(p => p.id === id && p.ws?.readyState === 1)
             );
 
+             console.log(`Sending restartUpdate: wantsToJoin=${player.wantsToJoinNextGame}`);
             player.ws.send(JSON.stringify({
               type: 'restartUpdate',
               readyCount: readyConnectedPlayers.length,
@@ -2443,6 +2449,8 @@ wss.on('connection', (ws, req) => {
       twoImpostorsOption: lobby.twoImpostorsOption || false,
       wantsToJoinNextGame: player.wantsToJoinNextGame || false
     }));
+
+    console.log(`Sent lobbyAssigned to spectator ${player.name} with wantsToJoinNextGame=${player.wantsToJoinNextGame}`);
     
     broadcast(lobby, { 
       type: 'lobbyUpdate', 
@@ -2539,10 +2547,16 @@ wss.on('connection', (ws, req) => {
   }
 
   function sendCurrentGameStateToSpectator(lobby, spectator) {
+     console.log(`========== SEND GAME STATE TO SPECTATOR ==========`);
+  console.log(`Spectator: ${spectator.name}`);
+  console.log(`Phase: ${lobby.phase}`);
+  console.log(`spectator.wantsToJoinNextGame: ${spectator.wantsToJoinNextGame}`);
     try {
       if (lobby.phase === 'results' || lobby.phase === 'impostorGuess') {
         const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
         const winner = connectedPlayers.length >= 3 ? 'Game Ended' : 'Game Ended Early';
+
+        console.log(`Sending gameEnd with wantsToJoinNextGame=${spectator.wantsToJoinNextGame}`);
         
         spectator.ws.send(JSON.stringify({
           type: 'gameEnd',
@@ -2560,6 +2574,7 @@ wss.on('connection', (ws, req) => {
           guessEndsAt: lobby.impostorGuessEndsAt
         }));
       } else {
+        console.log(`Sending gameStart for phase ${lobby.phase}`);
         spectator.ws.send(JSON.stringify({
           type: 'gameStart',
           role: 'spectator',
@@ -2594,6 +2609,7 @@ wss.on('connection', (ws, req) => {
     } catch (err) {
       console.log(`Error sending game state to spectator ${spectator.name}:`, err.message);
     }
+    console.log(`==================================================`);
   }
 
   function sendRestartUpdates(lobby) {
