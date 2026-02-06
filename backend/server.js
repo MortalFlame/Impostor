@@ -2567,6 +2567,27 @@ wss.on('connection', (ws, req) => {
           isSpectator: true,
           wantsToJoinNextGame: spectator.wantsToJoinNextGame || false  // ← ADD THIS
         }));
+
+            // ALSO send a restart update so the spectator sees their current join state
+      setTimeout(() => {
+        if (spectator.ws?.readyState === 1) {
+          const playersInGame = getPlayersInGame(lobby);
+          const readyConnectedPlayers = lobby.restartReady.filter(id =>
+            lobby.players.some(p => p.id === id && p.ws?.readyState === 1)
+          );
+          
+          spectator.ws.send(JSON.stringify({
+            type: 'restartUpdate',
+            readyCount: readyConnectedPlayers.length,
+            totalPlayers: playersInGame.length,
+            spectatorsWantingToJoin: lobby.spectatorsWantingToJoin.length,
+            isSpectator: true,
+            wantsToJoin: spectator.wantsToJoinNextGame || false,
+            status: spectator.wantsToJoinNextGame ? 'joining' : 'waiting'
+          }));
+        }
+      }, 100);
+        
       } else if (lobby.phase === 'impostorGuess') {
         spectator.ws.send(JSON.stringify({
           type: 'impostorGuessPhase',
@@ -2582,6 +2603,7 @@ wss.on('connection', (ws, req) => {
           hint: lobby.hint,
           isSpectator: true,
           playerName: spectator.name
+          wantsToJoinNextGame: spectator.wantsToJoinNextGame || false  // ← Add this for active game phases too
         }));
         
         if (lobby.phase === 'round1' || lobby.phase === 'round2') {
