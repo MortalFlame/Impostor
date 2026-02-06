@@ -1013,8 +1013,12 @@ function connect() {
           }
           
           if (isSpectator && (d.phase === 'lobby' || d.phase === 'results')) {
-            players.innerHTML += `<br><i style="color:#9b59b6">Click "Join Next Game" to play next round</i>`;
-          }
+  if (!spectatorWantsToJoin) {
+    players.innerHTML += `<br><i style="color:#9b59b6">Click "Join Next Game" to play next round</i>`;
+  } else {
+    players.innerHTML += `<br><i style="color:#2ecc71">You will join the next game automatically</i>`;
+  }
+}
           
           if (d.phase === 'results' && !isSpectator) {
             const myPlayerInfo = d.players.find(p => p.name === myPlayerName);
@@ -1030,7 +1034,9 @@ function connect() {
           
           exitLobbyBtn.style.display = 'block';
           
-          hasClickedRestart = false;
+          if (!isSpectator) {
+  hasClickedRestart = false;
+}
           
           if (d.playerName) {
             myPlayerName = d.playerName;
@@ -1116,6 +1122,10 @@ function connect() {
           stopImpostorGuessTimerAnimation();
           
           if (d.currentPlayer === 'Voting Phase') {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+  stopTurnTimerAnimation();
+  return;
+}
             turnEl.textContent = isSpectator ? 'Spectating - Voting Starting...' : 'Round Complete - Voting Starting...';
             submit.disabled = true;
             input.value = '';
@@ -1124,6 +1134,12 @@ function connect() {
             currentTurnEndsAt = null;
           } else {
             isMyTurn = d.currentPlayer === myPlayerName;
+            const currentPlayerObj = d.players?.find(p => p.name === d.currentPlayer);
+if (currentPlayerObj && currentPlayerObj.connected === false) {
+  stopTurnTimerAnimation();
+  turnEl.textContent = `Waiting for ${d.currentPlayer} to reconnect...`;
+  return;
+}
             
             if (isSpectator) {
               turnEl.textContent = `Spectating - Turn: ${d.currentPlayer}`;
@@ -1567,8 +1583,12 @@ function connect() {
   console.log(`isSpectator: ${isSpectator}, wantsToJoin: ${d.wantsToJoin}`);
   console.log(`readyCount: ${d.readyCount}, totalPlayers: ${d.totalPlayers}`);
   console.log(`spectatorsWantingToJoin: ${d.spectatorsWantingToJoin}`);
+if (isSpectator) {
+  spectatorWantsToJoin = d.wantsToJoin;
+}
+
           
-          if (d.isSpectator) {
+          if (isSpectator) {
             spectatorWantsToJoin = d.wantsToJoin || false;
 
             if (d.wantsToJoin) {
@@ -1964,7 +1984,7 @@ restart.onclick = () => {
   if (restart.disabled) return;
   
   if (isSpectator) {
-    if (!spectatorHasClickedRestart) {
+    if (!spectatorHasClickedRestart || !spectatorWantsToJoin) {
       spectatorHasClickedRestart = true;
       spectatorWantsToJoin = true;
       
