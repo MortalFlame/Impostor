@@ -1277,9 +1277,7 @@ function connect() {
           // FIX: Preserve spectator join state from server
   if (d.isSpectator && d.wantsToJoinNextGame !== undefined) {
     spectatorWantsToJoin = d.wantsToJoinNextGame;
-    if (d.wantsToJoinNextGame) {
-      spectatorHasClickedRestart = true;
-    }
+    spectatorHasClickedRestart = d.wantsToJoinNextGame;
     
     console.log(`GAME END EARLY: Spectator ${myPlayerName} wantsToJoinNextGame=${d.wantsToJoinNextGame}`);
   }
@@ -1336,14 +1334,11 @@ function connect() {
           
           if (isSpectator) {
             restart.classList.remove('hidden');
-            if (spectatorWantsToJoin || spectatorHasClickedRestart) {
-              restart.innerText = 'Joining next game...';
-              restart.disabled = true;
-              restart.style.opacity = '0.7';
-
-              const playersInGame = d.roles ? d.roles.length : 0;
-      restart.innerText = `Joining next game... (0/${playersInGame} players ready)`;
-            } else {
+           if (spectatorWantsToJoin || spectatorHasClickedRestart) {
+      restart.innerText = `Joining next game... (${d.readyCount || 0}/${d.totalPlayers || d.roles?.length || 0} players ready)`;
+      restart.disabled = true;
+      restart.style.opacity = '0.7';
+    } else {
               restart.innerText = 'Join Next Game';
               restart.disabled = false;
               restart.style.opacity = '1';
@@ -1376,9 +1371,10 @@ function connect() {
           // FIX: Preserve spectator join state from server
   if (d.isSpectator && d.wantsToJoinNextGame !== undefined) {
     spectatorWantsToJoin = d.wantsToJoinNextGame;
-    if (d.wantsToJoinNextGame) {
-      spectatorHasClickedRestart = true;
-    }
+    spectatorHasClickedRestart = d.wantsToJoinNextGame;
+    
+    console.log(`GAME END: Spectator ${myPlayerName} wantsToJoinNextGame=${d.wantsToJoinNextGame}`);
+  }
     
     // Debug log
     console.log(`GAME END: Spectator ${myPlayerName} wantsToJoinNextGame=${d.wantsToJoinNextGame}`);
@@ -1535,12 +1531,10 @@ function connect() {
           if (isSpectator) {
             restart.classList.remove('hidden');
             if (spectatorWantsToJoin || spectatorHasClickedRestart) {
-              restart.innerText = 'Joining next game...';
-              restart.disabled = true;
-              restart.style.opacity = '0.7';
-              const playersInGame = d.roles ? d.roles.length : 0;
-      restart.innerText = `Joining next game... (0/${playersInGame} players ready)`;
-            } else {
+      restart.innerText = `Joining next game... (${d.readyCount || 0}/${d.totalPlayers || d.roles?.length || 0} players ready)`;
+      restart.disabled = true;
+      restart.style.opacity = '0.7';
+    } else {
               restart.innerText = 'Join Next Game';
               restart.disabled = false;
               restart.style.opacity = '1';
