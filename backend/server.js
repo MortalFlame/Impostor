@@ -373,23 +373,22 @@ function makeNameUnique(baseName, existingNames, id) {
 }
 
 function replaceSocket(player, newWs) {
-  if (player.ws && player.ws !== newWs) {
-    // Mark as disconnected if we're replacing an active socket
-    if (player.ws.readyState === 1 && !player.removed) {
-      player.lastDisconnectTime = Date.now();
-      console.log(`DISCONNECT TRACKING: ${player.name} socket replaced, marking disconnect time`);
-    }
-    
+  // Close old socket immediately without tracking it as a disconnect
+  if (player.ws && player.ws !== newWs && player.ws.readyState === 1) {
     try {
+      // Clean up old socket event handlers
       player.ws.onmessage = null;
       player.ws.onclose = null;
       player.ws.onerror = null;
+      
+      // Close with a specific code to indicate replacement
       player.ws.close(4001, 'Replaced by new connection');
     } catch (err) {
-      // Ignore close errors
+      // Ignore errors
     }
   }
   
+  // Assign the new socket
   player.ws = newWs;
 }
 
@@ -417,7 +416,6 @@ function broadcast(lobby, data) {
   });
 }
 
-// Get players who are still in the game (not removed and grace not expired)
 // Get players who are still in the game (not removed and grace not expired)
 function getPlayersInGame(lobby) {
   const now = Date.now();
@@ -1257,8 +1255,9 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
-      if (player && ws.connectionEpoch !== player.connectionEpoch) {
-        console.log(`Ignoring message from stale socket for player ${player.name}`);
+      // Check if this socket is still the active one for the player
+      if (player && player.ws !== ws) {
+        console.log(`Ignoring message from stale socket for ${player?.name}`);
         return;
       }
 
@@ -1604,115 +1603,115 @@ wss.on('connection', (ws, req) => {
       }
 
       if (msg.type === 'submitWord') {
-  const currentPlayer = lobby.players[lobby.turn];
-  if (!currentPlayer || currentPlayer.id !== player.id) {
-    console.log(`Not ${player.name}'s turn (it's ${currentPlayer?.name}'s turn)`);
-    return;
-  }
+        const currentPlayer = lobby.players[lobby.turn];
+        if (!currentPlayer || currentPlayer.id !== player.id) {
+          console.log(`Not ${player.name}'s turn (it's ${currentPlayer?.name}'s turn)`);
+          return;
+        }
 
-  if (player.ws?.readyState !== 1) {
-    console.log(`Player ${player.name} not connected`);
-    return;
-  }
+        if (player.ws?.readyState !== 1) {
+          console.log(`Player ${player.name} not connected`);
+          return;
+        }
 
-  const sanitizedWord = sanitizeInput(msg.word, 50);
+        const sanitizedWord = sanitizeInput(msg.word, 50);
 
-  if (!sanitizedWord) {
-    console.log(`Player ${player.name} submitted empty/only HTML`);
-    return;
-  }
+        if (!sanitizedWord) {
+          console.log(`Player ${player.name} submitted empty/only HTML`);
+          return;
+        }
 
-  const entry = { name: player.name, word: sanitizedWord };
-  if (lobby.phase === 'round1') {
-    lobby.round1.push(entry);
-  } else if (lobby.phase === 'round2') {
-    lobby.round2.push(entry);
-  }
+        const entry = { name: player.name, word: sanitizedWord };
+        if (lobby.phase === 'round1') {
+          lobby.round1.push(entry);
+        } else if (lobby.phase === 'round2') {
+          lobby.round2.push(entry);
+        }
 
-  if (lobby.turnTimeout?.timer) {
-    clearTimeout(lobby.turnTimeout.timer);
-    lobby.turnTimeout = null;
-  }
+        if (lobby.turnTimeout?.timer) {
+          clearTimeout(lobby.turnTimeout.timer);
+          lobby.turnTimeout = null;
+        }
 
-  // FIXED: Use only CONNECTED players for submission count (not players in grace period)
-  const connectedPlayersInGame = lobby.players.filter(p => 
-    p.ws?.readyState === 1 && !p.removed && p.role
-  );
-  
-  console.log(`submitWord: ${player.name} submitted "${sanitizedWord}"`);
-  console.log(`  Phase: ${lobby.phase}`);
-  console.log(`  Submissions: ${lobby.phase === 'round1' ? lobby.round1.length : lobby.round2.length}`);
-  console.log(`  Connected players in game: ${connectedPlayersInGame.length}`);
-  console.log(`  Checking: ${lobby.phase === 'round1' ? lobby.round1.length : lobby.round2.length} >= ${connectedPlayersInGame.length}`);
-  
-  // FIXED: Only check against connected players, not all players in grace period
-  if (lobby.phase === 'round1' && lobby.round1.length >= connectedPlayersInGame.length) {
-    console.log(`✓ All CONNECTED players submitted for round1, advancing to round2`);
-    lobby.phase = 'round2';
-    lobby.turn = 0;
-    for (let i = 0; i < lobby.players.length; i++) {
-      if (lobby.players[i]?.ws?.readyState === 1 && !lobby.players[i].removed) {
-        lobby.turn = i;
-        break;
+        // FIXED: Use only CONNECTED players for submission count (not players in grace period)
+        const connectedPlayersInGame = lobby.players.filter(p => 
+          p.ws?.readyState === 1 && !p.removed && p.role
+        );
+        
+        console.log(`submitWord: ${player.name} submitted "${sanitizedWord}"`);
+        console.log(`  Phase: ${lobby.phase}`);
+        console.log(`  Submissions: ${lobby.phase === 'round1' ? lobby.round1.length : lobby.round2.length}`);
+        console.log(`  Connected players in game: ${connectedPlayersInGame.length}`);
+        console.log(`  Checking: ${lobby.phase === 'round1' ? lobby.round1.length : lobby.round2.length} >= ${connectedPlayersInGame.length}`);
+        
+        // FIXED: Only check against connected players, not all players in grace period
+        if (lobby.phase === 'round1' && lobby.round1.length >= connectedPlayersInGame.length) {
+          console.log(`✓ All CONNECTED players submitted for round1, advancing to round2`);
+          lobby.phase = 'round2';
+          lobby.turn = 0;
+          for (let i = 0; i < lobby.players.length; i++) {
+            if (lobby.players[i]?.ws?.readyState === 1 && !lobby.players[i].removed) {
+              lobby.turn = i;
+              break;
+            }
+          }
+          
+          broadcast(lobby, {
+            type: 'turnUpdate',
+            phase: 'round1',
+            round1: lobby.round1,
+            round2: lobby.round2,
+            currentPlayer: lobby.players[lobby.turn]?.name || 'Unknown',
+            turnEndsAt: lobby.turnEndsAt
+          });
+          
+          startTurnTimer(lobby);
+          return;
+        } else if (lobby.phase === 'round2' && lobby.round2.length >= connectedPlayersInGame.length) {
+          console.log(`✓ All CONNECTED players submitted for round2, advancing to voting`);
+          lobby.phase = 'voting';
+          broadcast(lobby, {
+            type: 'turnUpdate',
+            phase: 'round2',
+            round1: lobby.round1,
+            round2: lobby.round2,
+            currentPlayer: 'Voting Phase'
+          });
+          
+          setTimeout(() => {
+            broadcast(lobby, {
+              type: 'startVoting',
+              players: lobby.players.map(p => p.name),
+              twoImpostorsMode: lobby.twoImpostorsOption || false
+            });
+          }, 500);
+          return;
+        }
+
+        // FIXED: Find next player who is actually connected (not just in grace period)
+        let nextIndex = (lobby.turn + 1) % lobby.players.length;
+        let attempts = 0;
+        
+        while (attempts < lobby.players.length) {
+          const nextPlayer = lobby.players[nextIndex];
+          // Check if player is connected AND not removed
+          if (nextPlayer?.ws?.readyState === 1 && !nextPlayer.removed) {
+            lobby.turn = nextIndex;
+            break;
+          }
+          nextIndex = (nextIndex + 1) % lobby.players.length;
+          attempts++;
+        }
+        
+        // If we couldn't find a connected player, check game end conditions
+        if (attempts >= lobby.players.length) {
+          console.log('No connected players found to take turn after submission');
+          checkGameEndConditions(lobby, lobby.id);
+          return;
+        }
+        
+        startTurnTimer(lobby);
       }
-    }
-    
-    broadcast(lobby, {
-      type: 'turnUpdate',
-      phase: 'round1',
-      round1: lobby.round1,
-      round2: lobby.round2,
-      currentPlayer: lobby.players[lobby.turn]?.name || 'Unknown',
-      turnEndsAt: lobby.turnEndsAt
-    });
-    
-    startTurnTimer(lobby);
-    return;
-  } else if (lobby.phase === 'round2' && lobby.round2.length >= connectedPlayersInGame.length) {
-    console.log(`✓ All CONNECTED players submitted for round2, advancing to voting`);
-    lobby.phase = 'voting';
-    broadcast(lobby, {
-      type: 'turnUpdate',
-      phase: 'round2',
-      round1: lobby.round1,
-      round2: lobby.round2,
-      currentPlayer: 'Voting Phase'
-    });
-    
-    setTimeout(() => {
-      broadcast(lobby, {
-        type: 'startVoting',
-        players: lobby.players.map(p => p.name),
-        twoImpostorsMode: lobby.twoImpostorsOption || false
-      });
-    }, 500);
-    return;
-  }
-
-  // FIXED: Find next player who is actually connected (not just in grace period)
-  let nextIndex = (lobby.turn + 1) % lobby.players.length;
-  let attempts = 0;
-  
-  while (attempts < lobby.players.length) {
-    const nextPlayer = lobby.players[nextIndex];
-    // Check if player is connected AND not removed
-    if (nextPlayer?.ws?.readyState === 1 && !nextPlayer.removed) {
-      lobby.turn = nextIndex;
-      break;
-    }
-    nextIndex = (nextIndex + 1) % lobby.players.length;
-    attempts++;
-  }
-  
-  // If we couldn't find a connected player, check game end conditions
-  if (attempts >= lobby.players.length) {
-    console.log('No connected players found to take turn after submission');
-    checkGameEndConditions(lobby, lobby.id);
-    return;
-  }
-  
-  startTurnTimer(lobby);
-}
 
       if (msg.type === 'vote') {
         // Handle both single vote and array of votes
@@ -2173,55 +2172,70 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', (code, reason) => {
-  clearTimeout(connectionTimeout);
-  
-  // Clean up WebSocket object properties to prevent memory leaks
-  delete ws.inLobby;
-  delete ws.isAlive;
-  delete ws.connectionEpoch;
-  
-  if (lobbyId && lobbies[lobbyId] && player) {
-    const lobby = lobbies[lobbyId];
+    clearTimeout(connectionTimeout);
     
-    // IMPORTANT: No epoch check for disconnect tracking!
-    // We need to track ALL disconnects to properly handle grace periods
+    // Clean up WebSocket object properties to prevent memory leaks
+    delete ws.inLobby;
+    delete ws.isAlive;
     
-    // Only mark as disconnected if not manually removed
-    if (!player.removed) {
-      player.lastDisconnectTime = Date.now();
-      console.log(`DISCONNECT: ${player.name} disconnected at ${player.lastDisconnectTime}, phase: ${lobby.phase}`);
+    if (lobbyId && lobbies[lobbyId] && player) {
+      const lobby = lobbies[lobbyId];
+      
+      // IMPORTANT: Check if this is the CURRENT socket for the player
+      // If player.ws is no longer this socket, ignore the disconnect
+      if (player.ws !== ws) {
+        console.log(`Ignoring close from old socket for ${player.name} (code: ${code})`);
+        return;
+      }
+      
+      // Don't track replacement disconnects (code 4001)
+      if (code === 4001) {
+        console.log(`Socket replacement for ${player.name}, not marking as disconnected`);
+        return;
+      }
+      
+      // Only mark as disconnected if not manually removed
+      if (!player.removed) {
+        player.lastDisconnectTime = Date.now();
+        console.log(`DISCONNECT: ${player.name} disconnected at ${player.lastDisconnectTime}, phase: ${lobby.phase}, code: ${code}`);
+        
+        // Mark the socket as null to prevent sending messages
+        player.ws = null;
+      }
+      
+      const wasGameInProgress = (lobby.phase !== 'lobby' && lobby.phase !== 'results' && lobby.phase !== 'impostorGuess');
+      
+      if (wasGameInProgress) {
+        // Small delay to allow for immediate reconnection
+        setTimeout(() => {
+          checkGameEndConditions(lobby, lobbyId);
+        }, 1000);
+      }
+      
+      broadcast(lobby, { 
+        type: 'lobbyUpdate', 
+        players: lobby.players.map(p => ({ 
+          id: p.id, 
+          name: p.name, 
+          connected: p.ws?.readyState === 1,
+          role: p.role || null
+        })),
+        spectators: lobby.spectators.map(s => ({ 
+          id: s.id, 
+          name: s.name, 
+          connected: s.ws?.readyState === 1 
+        })),
+        owner: lobby.owner,
+        phase: lobby.phase,
+        impostorGuessOption: lobby.impostorGuessOption || false,
+        twoImpostorsOption: lobby.twoImpostorsOption || false
+      });
+      
+      broadcastLobbyList();
     }
     
-    const wasGameInProgress = (lobby.phase !== 'lobby' && lobby.phase !== 'results' && lobby.phase !== 'impostorGuess');
-    
-    if (wasGameInProgress) {
-      checkGameEndConditions(lobby, lobbyId);
-    }
-    
-    broadcast(lobby, { 
-      type: 'lobbyUpdate', 
-      players: lobby.players.map(p => ({ 
-        id: p.id, 
-        name: p.name, 
-        connected: p.ws?.readyState === 1,
-        role: p.role || null
-      })),
-      spectators: lobby.spectators.map(s => ({ 
-        id: s.id, 
-        name: s.name, 
-        connected: s.ws?.readyState === 1 
-      })),
-      owner: lobby.owner,
-      phase: lobby.phase,
-      impostorGuessOption: lobby.impostorGuessOption || false,
-      twoImpostorsOption: lobby.twoImpostorsOption || false
-    });
-    
-    broadcastLobbyList();
-  }
-  
-  console.log(`Connection closed: ${connectionId} (code: ${code}, reason: ${reason})`);
-});
+    console.log(`Connection closed: ${connectionId} (code: ${code}, reason: ${reason})`);
+  });
 
   ws.on('error', (error) => {
     console.error(`WebSocket error for ${connectionId}:`, error.message);
@@ -2235,23 +2249,27 @@ wss.on('connection', (ws, req) => {
     
     let existingPlayer = lobby.players.find(p => p.id === msg.playerId);
     if (existingPlayer) {
-      // Player is reconnecting - keep their existing game state
+      // Player is reconnecting
       player = existingPlayer;
-      replaceSocket(player, ws);
       
-      // FIX: Reset disconnect time and removed flag on successful reconnection
+      // If player already has an active socket, close it
+      if (player.ws && player.ws !== ws && player.ws.readyState === 1) {
+        console.log(`Closing duplicate connection for ${player.name}`);
+        try {
+          player.ws.close(4001, 'Duplicate connection');
+        } catch (err) {
+          // Ignore
+        }
+      }
+      
+      // Replace the socket
+      player.ws = ws;
+      
+      // Reset disconnect tracking on successful reconnection
       player.lastDisconnectTime = null;
-      player.removed = false; // ← ADD THIS
-      
-      player.connectionId = connectionId;
-      player.reconnectionAttempts = (player.reconnectionAttempts || 0) + 1;
-      player.connectionEpoch = (player.connectionEpoch || 0) + 1;
-      ws.connectionEpoch = player.connectionEpoch;
+      player.removed = false;
       
       console.log(`Player ${player.name} reconnected to lobby ${targetLobbyId}, phase: ${lobby.phase}, role: ${player.role || 'none'}`);
-      
-      // IMPORTANT: Do NOT send restart updates when reconnecting during active game
-      // This prevents triggering the restart condition check
       
       // Send the current game state to the reconnecting player
       if (lobby.phase !== 'lobby') {
@@ -2276,7 +2294,6 @@ wss.on('connection', (ws, req) => {
         connectionId,
         lastActionTime: Date.now(),
         reconnectionAttempts: 0,
-        connectionEpoch: 1,
         role: null,
         vote: [],
         removed: false,
@@ -2284,7 +2301,6 @@ wss.on('connection', (ws, req) => {
         lastDisconnectTime: null,
         submittedWord: false
       };
-      ws.connectionEpoch = 1;
       lobby.players.push(player);
       
       if (!lobby.owner) {
@@ -2333,235 +2349,152 @@ wss.on('connection', (ws, req) => {
   }
 
   function handleSpectatorJoin(ws, msg, targetLobbyId, connectionId) {
-  if (!lobbies[targetLobbyId]) {
-    try {
-      ws.send(JSON.stringify({ 
-        type: 'error', 
-        message: 'Lobby not found' 
-      }));
-    } catch (sendError) {
-      // Ignore
-    }
-    return;
-  }
-  
-  const lobby = lobbies[targetLobbyId];
-  lobbyId = targetLobbyId;
-  
-  // Check if this is a reconnection of an existing player
-  const existingPlayer = lobby.players.find(p => p.id === msg.playerId);
-  if (existingPlayer) {
-    // Player exists - reconnect them as player, not spectator
-    console.log(`Player ${existingPlayer.name} reconnecting as player (not spectator) to lobby ${targetLobbyId}`);
-    player = existingPlayer;
-    replaceSocket(player, ws);
-    
-    // Reset disconnect time and removed flag on successful reconnection
-    player.lastDisconnectTime = null;
-    player.removed = false;
-    
-    player.connectionId = connectionId;
-    player.connectionEpoch = (player.connectionEpoch || 0) + 1;
-    ws.connectionEpoch = player.connectionEpoch;
-    
-    // Send current game state
-    if (lobby.phase !== 'lobby') {
-      setTimeout(() => {
-        sendCurrentGameStateToPlayer(lobby, player);
-      }, 100);
+    if (!lobbies[targetLobbyId]) {
+      try {
+        ws.send(JSON.stringify({ 
+          type: 'error', 
+          message: 'Lobby not found' 
+        }));
+      } catch (sendError) {
+        // Ignore
+      }
+      return;
     }
     
-    ws.inLobby = true;
+    const lobby = lobbies[targetLobbyId];
+    lobbyId = targetLobbyId;
     
-    ws.send(JSON.stringify({ 
-      type: 'lobbyAssigned', 
-      lobbyId: lobbyId,
-      isSpectator: false,
-      playerName: player.name,
-      yourName: player.name,
-      isOwner: lobby.owner === player.id,
-      impostorGuessOption: lobby.impostorGuessOption || false,
-      twoImpostorsOption: lobby.twoImpostorsOption || false
-    }));
-    
-    broadcast(lobby, { 
-      type: 'lobbyUpdate', 
-      players: lobby.players.map(p => ({ 
-        id: p.id, 
-        name: p.name, 
-        connected: p.ws?.readyState === 1,
-        role: p.role || null
-      })),
-      spectators: lobby.spectators.map(s => ({ 
-        id: s.id, 
-        name: s.name, 
-        connected: s.ws?.readyState === 1 
-      })),
-      owner: lobby.owner,
-      phase: lobby.phase,
-      impostorGuessOption: lobby.impostorGuessOption || false,
-      twoImpostorsOption: lobby.twoImpostorsOption || false
-    });
-    
-    broadcastLobbyList();
-    return;
-  }
-  
-  // Check for existing spectator
-  let existingSpectator = lobby.spectators.find(s => s.id === msg.playerId);
-  if (existingSpectator) {
-    player = existingSpectator;
-    replaceSocket(player, ws);
-    
-    // Reset disconnect time and removed flag on successful reconnection
-    player.lastDisconnectTime = null;
-    player.removed = false;
-    
-    player.connectionId = connectionId;
-    player.connectionEpoch = (player.connectionEpoch || 0) + 1;
-    ws.connectionEpoch = player.connectionEpoch;
-    
-    // FIXED: Preserve the wantsToJoinNextGame state from server's source of truth
-    // Check if spectator was in the wanting to join array
-    const wasWantingToJoin = lobby.spectatorsWantingToJoin.includes(player.id);
-    player.wantsToJoinNextGame = wasWantingToJoin;
-    
-    console.log(`SPECTATOR RECONNECT: ${player.name} (wantsToJoin: ${player.wantsToJoinNextGame})`);
-    
-    ws.inLobby = true;
-    
-    // Send the current game state to spectator
-    if (lobby.phase !== 'lobby') {
-      setTimeout(() => {
-        sendCurrentGameStateToSpectator(lobby, player);
-      }, 100);
-    }
-    
-    // Send immediate restart update if in results phase
-    if (lobby.phase === 'results' || lobby.phase === 'lobby') {
-      setTimeout(() => {
-        if (player.ws?.readyState === 1) {
-          const playersInGame = getPlayersInGame(lobby);
-          const readyConnectedPlayers = lobby.restartReady.filter(id =>
-            lobby.players.some(p => p.id === id && p.ws?.readyState === 1)
-          );
-          
-          try {
-            player.ws.send(JSON.stringify({
-              type: 'restartUpdate',
-              readyCount: readyConnectedPlayers.length,
-              totalPlayers: playersInGame.length,
-              spectatorsWantingToJoin: lobby.spectatorsWantingToJoin.length,
-              isSpectator: true,
-              wantsToJoin: player.wantsToJoinNextGame || false,
-              status: player.wantsToJoinNextGame ? 'joining' : 'waiting'
-            }));
-          } catch (err) {
-            console.log(`Failed to send restart update to reconnected spectator ${player.name}`);
-          }
+    // Check if this is a reconnection of an existing player
+    const existingPlayer = lobby.players.find(p => p.id === msg.playerId);
+    if (existingPlayer) {
+      // Player exists - reconnect them as player, not spectator
+      console.log(`Player ${existingPlayer.name} reconnecting as player (not spectator) to lobby ${targetLobbyId}`);
+      player = existingPlayer;
+      
+      // If player already has an active socket, close it
+      if (player.ws && player.ws !== ws && player.ws.readyState === 1) {
+        console.log(`Closing duplicate connection for ${player.name}`);
+        try {
+          player.ws.close(4001, 'Duplicate connection');
+        } catch (err) {
+          // Ignore
         }
-      }, 300);
+      }
+      
+      // Replace the socket
+      player.ws = ws;
+      
+      // Reset disconnect tracking on successful reconnection
+      player.lastDisconnectTime = null;
+      player.removed = false;
+      
+      // Send current game state
+      if (lobby.phase !== 'lobby') {
+        setTimeout(() => {
+          sendCurrentGameStateToPlayer(lobby, player);
+        }, 100);
+      }
+      
+      ws.inLobby = true;
+      
+      ws.send(JSON.stringify({ 
+        type: 'lobbyAssigned', 
+        lobbyId: lobbyId,
+        isSpectator: false,
+        playerName: player.name,
+        yourName: player.name,
+        isOwner: lobby.owner === player.id,
+        impostorGuessOption: lobby.impostorGuessOption || false,
+        twoImpostorsOption: lobby.twoImpostorsOption || false
+      }));
+      
+      broadcast(lobby, { 
+        type: 'lobbyUpdate', 
+        players: lobby.players.map(p => ({ 
+          id: p.id, 
+          name: p.name, 
+          connected: p.ws?.readyState === 1,
+          role: p.role || null
+        })),
+        spectators: lobby.spectators.map(s => ({ 
+          id: s.id, 
+          name: s.name, 
+          connected: s.ws?.readyState === 1 
+        })),
+        owner: lobby.owner,
+        phase: lobby.phase,
+        impostorGuessOption: lobby.impostorGuessOption || false,
+        twoImpostorsOption: lobby.twoImpostorsOption || false
+      });
+      
+      broadcastLobbyList();
+      return;
     }
-    
-  } else {
-    // New spectator
-    const allNames = [...lobby.players, ...lobby.spectators].map(p => p.name);
-    const baseName = sanitizeInput(msg.name || `Spectator-${Math.floor(Math.random() * 1000)}`, 20);
-    let uniqueName = baseName.trim();
-    
-    if (isNameTakenInLobby(lobby, uniqueName)) {
-      uniqueName = makeNameUnique(uniqueName, allNames, msg.playerId);
-      console.log(`Spectator name "${baseName}" was taken in lobby ${targetLobbyId}, changed to "${uniqueName}"`);
-    } else {
-      uniqueName = makeNameUnique(uniqueName, allNames, msg.playerId);
-    }
-    
-    player = { 
-      id: msg.playerId, 
-      name: uniqueName, 
-      ws, 
-      isSpectator: true,
-      connectionId,
-      lastActionTime: Date.now(),
-      wantsToJoinNextGame: false, // New spectators start with false
-      connectionEpoch: 1,
-      removed: false,
-      lastDisconnectTime: null
-    };
-    ws.connectionEpoch = 1;
-    lobby.spectators.push(player);
-  }
-
-  ws.inLobby = true;
-
-  // Send lobby assignment with correct wantsToJoinNextGame state
-  ws.send(JSON.stringify({
-    type: 'lobbyAssigned',
-    lobbyId: lobbyId,
-    isSpectator: true,
-    playerName: player.name,
-    yourName: player.name,
-    isOwner: false,
-    impostorGuessOption: lobby.impostorGuessOption || false,
-    twoImpostorsOption: lobby.twoImpostorsOption || false,
-    wantsToJoinNextGame: player.wantsToJoinNextGame || false // Include this in the initial assignment
-  }));
-  
-  broadcast(lobby, { 
-    type: 'lobbyUpdate', 
-    players: lobby.players.map(p => ({ 
-      id: p.id, 
-      name: p.name, 
-      connected: p.ws?.readyState === 1,
-      role: p.role || null
-    })),
-    spectators: lobby.spectators.map(s => ({ 
-      id: s.id, 
-      name: s.name, 
-      connected: s.ws?.readyState === 1 
-    })),
-    owner: lobby.owner,
-    phase: lobby.phase,
-    impostorGuessOption: lobby.impostorGuessOption || false,
-    twoImpostorsOption: lobby.twoImpostorsOption || false
-  });
-  
-  broadcastLobbyList();
-}
     
     // Check for existing spectator
     let existingSpectator = lobby.spectators.find(s => s.id === msg.playerId);
     if (existingSpectator) {
       player = existingSpectator;
-      replaceSocket(player, ws);
       
-      // FIX: Reset disconnect time and removed flag on successful reconnection
-      player.lastDisconnectTime = null;
-      player.removed = false; // ← ADD THIS
-      
-      player.connectionId = connectionId;
-      player.connectionEpoch = (player.connectionEpoch || 0) + 1;
-      ws.connectionEpoch = player.connectionEpoch;
-      
-      // Restore spectator intent from the server's source of truth
-      const wasWantingToJoin = lobby.spectatorsWantingToJoin.includes(player.id);
-      player.wantsToJoinNextGame = wasWantingToJoin;
-
-      // Sync array and flag
-      if (player.wantsToJoinNextGame &&
-          !lobby.spectatorsWantingToJoin.includes(player.id)) {
-        lobby.spectatorsWantingToJoin.push(player.id);
-      } else if (!player.wantsToJoinNextGame &&
-                 lobby.spectatorsWantingToJoin.includes(player.id)) {
-        const index = lobby.spectatorsWantingToJoin.indexOf(player.id);
-        if (index !== -1) lobby.spectatorsWantingToJoin.splice(index, 1);
+      // If spectator already has an active socket, close it
+      if (player.ws && player.ws !== ws && player.ws.readyState === 1) {
+        console.log(`Closing duplicate connection for spectator ${player.name}`);
+        try {
+          player.ws.close(4001, 'Duplicate connection');
+        } catch (err) {
+          // Ignore
+        }
       }
       
-      console.log(`SPECTATOR RECONNECT: ${player.name}`);
-      console.log(`  spectatorsWantingToJoin array:`, lobby.spectatorsWantingToJoin);
-      console.log(`  wasWantingToJoin: ${wasWantingToJoin}`);
-      console.log(`  player.wantsToJoinNextGame: ${player.wantsToJoinNextGame}`);
-      console.log(`  lobby.phase: ${lobby.phase}`);
+      // Replace the socket
+      player.ws = ws;
+      
+      // Reset disconnect tracking on successful reconnection
+      player.lastDisconnectTime = null;
+      player.removed = false;
+      
+      // FIXED: Preserve the wantsToJoinNextGame state from server's source of truth
+      // Check if spectator was in the wanting to join array
+      const wasWantingToJoin = lobby.spectatorsWantingToJoin.includes(player.id);
+      player.wantsToJoinNextGame = wasWantingToJoin;
+      
+      console.log(`SPECTATOR RECONNECT: ${player.name} (wantsToJoin: ${player.wantsToJoinNextGame})`);
+      
+      ws.inLobby = true;
+      
+      // Send the current game state to spectator
+      if (lobby.phase !== 'lobby') {
+        setTimeout(() => {
+          sendCurrentGameStateToSpectator(lobby, player);
+        }, 100);
+      }
+      
+      // Send immediate restart update if in results phase
+      if (lobby.phase === 'results' || lobby.phase === 'lobby') {
+        setTimeout(() => {
+          if (player.ws?.readyState === 1) {
+            const playersInGame = getPlayersInGame(lobby);
+            const readyConnectedPlayers = lobby.restartReady.filter(id =>
+              lobby.players.some(p => p.id === id && p.ws?.readyState === 1)
+            );
+            
+            try {
+              player.ws.send(JSON.stringify({
+                type: 'restartUpdate',
+                readyCount: readyConnectedPlayers.length,
+                totalPlayers: playersInGame.length,
+                spectatorsWantingToJoin: lobby.spectatorsWantingToJoin.length,
+                isSpectator: true,
+                wantsToJoin: player.wantsToJoinNextGame || false,
+                status: player.wantsToJoinNextGame ? 'joining' : 'waiting'
+              }));
+            } catch (err) {
+              console.log(`Failed to send restart update to reconnected spectator ${player.name}`);
+            }
+          }
+        }, 300);
+      }
+      
     } else {
       // New spectator
       const allNames = [...lobby.players, ...lobby.spectators].map(p => p.name);
@@ -2582,50 +2515,16 @@ wss.on('connection', (ws, req) => {
         isSpectator: true,
         connectionId,
         lastActionTime: Date.now(),
-        wantsToJoinNextGame: false,
-        connectionEpoch: 1,
+        wantsToJoinNextGame: false, // New spectators start with false
         removed: false,
         lastDisconnectTime: null
       };
-      ws.connectionEpoch = 1;
       lobby.spectators.push(player);
     }
 
     ws.inLobby = true;
 
-    // Send current game state to spectator
-    if (lobby.phase !== 'lobby') {
-      setTimeout(() => {
-        sendCurrentGameStateToSpectator(lobby, player);
-      }, 100);
-    }
-
-    // FIX: Send restart state update IMMEDIATELY after reconnection if in results phase
-    if (lobby.phase === 'results' && existingSpectator) {
-      setTimeout(() => {
-        if (player.ws?.readyState === 1) {
-          try {
-            const playersInGame = getPlayersInGame(lobby);
-            const readyConnectedPlayers = lobby.restartReady.filter(id =>
-              lobby.players.some(p => p.id === id && p.ws?.readyState === 1)
-            );
-
-            player.ws.send(JSON.stringify({
-              type: 'restartUpdate',
-              readyCount: readyConnectedPlayers.length,
-              totalPlayers: playersInGame.length,
-              spectatorsWantingToJoin: lobby.spectatorsWantingToJoin.length,
-              isSpectator: true,
-              wantsToJoin: player.wantsToJoinNextGame || false,
-              status: player.wantsToJoinNextGame ? 'joining' : 'waiting'
-            }));
-          } catch (err) {
-            console.log(`Failed to send restart update to reconnected spectator ${player.name}`);
-          }
-        }
-      }, 200); // Increased delay to ensure lobby assignment is processed first
-    }
-
+    // Send lobby assignment with correct wantsToJoinNextGame state
     ws.send(JSON.stringify({
       type: 'lobbyAssigned',
       lobbyId: lobbyId,
@@ -2635,7 +2534,7 @@ wss.on('connection', (ws, req) => {
       isOwner: false,
       impostorGuessOption: lobby.impostorGuessOption || false,
       twoImpostorsOption: lobby.twoImpostorsOption || false,
-      wantsToJoinNextGame: player.wantsToJoinNextGame || false
+      wantsToJoinNextGame: player.wantsToJoinNextGame || false // Include this in the initial assignment
     }));
     
     broadcast(lobby, { 
@@ -2745,7 +2644,7 @@ wss.on('connection', (ws, req) => {
           hint: lobby.hint,
           winner,
           isSpectator: true,
-          wantsToJoinNextGame: spectator.wantsToJoinNextGame || false  // ← ADD THIS
+          wantsToJoinNextGame: spectator.wantsToJoinNextGame || false
         }));
       } else if (lobby.phase === 'impostorGuess') {
         spectator.ws.send(JSON.stringify({
@@ -2789,8 +2688,6 @@ wss.on('connection', (ws, req) => {
       console.log(`Error sending game state to spectator ${spectator.name}:`, err.message);
     }
   }
-
-  
   
   setTimeout(() => {
     if (ws.readyState === 1) {
