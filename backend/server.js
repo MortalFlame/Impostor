@@ -2080,8 +2080,9 @@ wss.on('connection', (ws, req) => {
       
       // Only mark as disconnected if not manually removed
       if (!player.removed) {
-        player.lastDisconnectTime = Date.now();
-      }
+      player.lastDisconnectTime = Date.now();
+      console.log(`DISCONNECT: ${player.name} disconnected at ${player.lastDisconnectTime}, phase: ${lobby.phase}`); // ← ADD THIS
+    }
       
       const wasGameInProgress = (lobby.phase !== 'lobby' && lobby.phase !== 'results' && lobby.phase !== 'impostorGuess');
       
