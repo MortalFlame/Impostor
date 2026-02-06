@@ -1055,6 +1055,13 @@ function connect() {
           restart.style.opacity = '1';
           
           if (isSpectator || d.role === 'spectator') {
+            // Always update spectator join state from server when game starts
+  if (d.wantsToJoinNextGame !== undefined) {
+    spectatorWantsToJoin = d.wantsToJoinNextGame;
+    if (d.wantsToJoinNextGame) {
+      spectatorHasClickedRestart = true;
+    }
+  }
             if (spectatorWantsToJoin || spectatorHasClickedRestart) {
               restart.innerText = 'Joining next game...';
               restart.disabled = true;
@@ -1995,6 +2002,8 @@ restart.onclick = () => {
       
       // Send restart request
       ws.send(JSON.stringify({ type: 'restart' }));
+      // Also send a manual update to server to ensure state is tracked
+      console.log(`SPECTATOR: ${myPlayerName} wants to join next game, sent restart message`);
     }
   } else {
     if (!hasClickedRestart) {
