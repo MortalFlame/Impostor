@@ -936,39 +936,67 @@ function cleanupLobby(lobby, lobbyId) {
     spectatorGracePeriod = GAME_GRACE_PERIOD;
   }
   
-  // Clean up players
-  lobby.players = lobby.players.filter(p => {
-    // If connected, keep
-    if (p.ws?.readyState === 1) return true;
-    
-    // If manually removed, remove immediately
-    if (p.removed) {
-      console.log(`Removing manually removed player: ${p.name}`);
-      hasChanges = true;
-      
-      const restartIndex = lobby.restartReady.indexOf(p.id);
-      if (restartIndex !== -1) {
-        lobby.restartReady.splice(restartIndex, 1);
-        restartStateChanged = true;
-      }
-      return false;
+  // Clean up players - Track removals to adjust turn index
+let removedBeforeCurrentTurn = 0;
+const playersToKeep = [];
+
+lobby.players.forEach((p, index) => {
+  let shouldRemove = false;
+
+  // If connected, keep
+  if (p.ws?.readyState === 1) {
+    playersToKeep.push(p);
+    return;
+  }
+
+  // If manually removed, remove immediately
+  if (p.removed) {
+    console.log(`Removing manually removed player: ${p.name}`);
+    hasChanges = true;
+    shouldRemove = true;
+
+    const restartIndex = lobby.restartReady.indexOf(p.id);
+    if (restartIndex !== -1) {
+      lobby.restartReady.splice(restartIndex, 1);
+      restartStateChanged = true;
     }
-    
-    // Check grace period
-    if (p.lastDisconnectTime && now - p.lastDisconnectTime > playerGracePeriod) {
-      console.log(`Removing disconnected player after ${playerGracePeriod/1000}s: ${p.name}`);
-      hasChanges = true;
-      p.removed = true;
-      
-      const restartIndex = lobby.restartReady.indexOf(p.id);
-      if (restartIndex !== -1) {
-        lobby.restartReady.splice(restartIndex, 1);
-        restartStateChanged = true;
-      }
-      return false;
+  }
+
+  // Check grace period expiration
+  else if (p.lastDisconnectTime && now - p.lastDisconnectTime > playerGracePeriod) {
+    console.log(`Removing disconnected player after ${playerGracePeriod/1000}s: ${p.name}`);
+    hasChanges = true;
+    p.removed = true;
+    shouldRemove = true;
+
+    const restartIndex = lobby.restartReady.indexOf(p.id);
+    if (restartIndex !== -1) {
+      lobby.restartReady.splice(restartIndex, 1);
+      restartStateChanged = true;
     }
-    return true;
-  });
+  }
+
+  if (!shouldRemove) {
+    playersToKeep.push(p);
+  } else if (lobby.turn !== undefined && index < lobby.turn) {
+    removedBeforeCurrentTurn++;
+  }
+});
+
+lobby.players = playersToKeep;
+
+// Adjust turn index based on removals
+if (removedBeforeCurrentTurn > 0 && lobby.turn !== undefined) {
+  lobby.turn -= removedBeforeCurrentTurn;
+  console.log(`Adjusted turn index down by ${removedBeforeCurrentTurn} to ${lobby.turn} due to player removals`);
+}
+
+// Validate turn index is still valid
+if (lobby.turn !== undefined && lobby.turn >= lobby.players.length) {
+  lobby.turn = lobby.players.length > 0 ? lobby.players.length - 1 : 0;
+  console.log(`Turn index was out of bounds, reset to ${lobby.turn}`);
+}
+
   
   // Clean up spectators
   lobby.spectators = lobby.spectators.filter(s => {
@@ -2683,7 +2711,8 @@ console.log(`Round2 starting with ${lobby.expectedSubmissions} expected submissi
               round2: lobby.round2,
               currentPlayer: currentPlayer.name,
               turnEndsAt: lobby.turnEndsAt,
-              isSpectator: true
+              isSpectator: true,
+              wantsToJoinNextGame: spectator.wantsToJoinNextGame || false
             }));
           }
         } else if (lobby.phase === 'voting') {
