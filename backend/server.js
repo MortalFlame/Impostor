@@ -99,6 +99,11 @@ function removePlayerFromAllLobbies(playerId, reason = 'Joined another lobby') {
     if (playerIndex !== -1) {
       const player = lobby.players[playerIndex];
       
+      // Mark as removed (no grace period for manual exit)
+      player.removed = true;
+      player.lastDisconnectTime = null;
+      player.graceExpiresAt = null;
+      
       // Notify the player if connected
       if (player.ws && player.ws.readyState === WebSocket.OPEN) {
         try {
@@ -143,6 +148,11 @@ function removePlayerFromAllLobbies(playerId, reason = 'Joined another lobby') {
     const spectatorIndex = lobby.spectators.findIndex(s => s.id === playerId);
     if (spectatorIndex !== -1) {
       const spectator = lobby.spectators[spectatorIndex];
+      
+      // Mark as removed
+      spectator.removed = true;
+      spectator.lastDisconnectTime = null;
+      spectator.graceExpiresAt = null;
       
       // Notify the spectator if connected
       if (spectator.ws && spectator.ws.readyState === WebSocket.OPEN) {
@@ -202,7 +212,8 @@ function removePlayerFromAllLobbies(playerId, reason = 'Joined another lobby') {
           players: lobby.players.map(p => ({ 
             id: p.id, 
             name: p.name, 
-            connected: p.ws?.readyState === 1 
+            connected: p.ws?.readyState === 1,
+            role: p.role || null
           })),
           spectators: lobby.spectators.map(s => ({ 
             id: s.id, 
@@ -340,14 +351,37 @@ function broadcast(lobby, data) {
   });
 }
 
+// Get players who are still in the game (not removed and grace not expired)
+function getPlayersInGame(lobby) {
+  const now = Date.now();
+  return lobby.players.filter(p => {
+    // Must have a role (is playing)
+    if (!p.role) return false;
+    
+    // If explicitly removed, not in game
+    if (p.removed) return false;
+    
+    // If connected, definitely in game
+    if (p.ws?.readyState === 1) return true;
+    
+    // If disconnected but within grace period, still in game
+    if (p.lastDisconnectTime && (now - p.lastDisconnectTime <= GAME_GRACE_PERIOD)) {
+      return true;
+    }
+    
+    // Grace expired or no disconnect time recorded
+    return false;
+  });
+}
+
 function checkGameEndConditions(lobby, lobbyId) {
   // Don't check during lobby, results, or impostor guess phases
   if (lobby.phase === 'lobby' || lobby.phase === 'results' || lobby.phase === 'impostorGuess') {
     return false;
   }
   
+  const playersInGame = getPlayersInGame(lobby);
   const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
-  const totalPlayers = lobby.players.length;
   
   // Check if impostor left AND we don't have an impostor
   const impostors = lobby.players.filter(p => p.role === 'impostor');
@@ -439,25 +473,25 @@ function endGameEarly(lobby, reason) {
     reason
   });
   
-  // ADD: Send individual messages to spectators with their join state
-lobby.spectators.forEach(s => {
-  if (s.ws?.readyState === 1) {
-    try {
-      s.ws.send(JSON.stringify({
-        type: 'gameEndEarly',
-        roles: lobby.players.map(p => ({ name: p.name, role: p.role })),
-        secretWord: lobby.word,
-        hint: lobby.hint,
-        winner,
-        reason,
-        isSpectator: true,
-        wantsToJoinNextGame: s.wantsToJoinNextGame || false  // ← ADD THIS
-      }));
-    } catch (err) {
-      console.log(`Failed to send gameEndEarly to spectator ${s.name}`);
+  // Send individual messages to spectators with their join state
+  lobby.spectators.forEach(s => {
+    if (s.ws?.readyState === 1) {
+      try {
+        s.ws.send(JSON.stringify({
+          type: 'gameEndEarly',
+          roles: lobby.players.map(p => ({ name: p.name, role: p.role })),
+          secretWord: lobby.word,
+          hint: lobby.hint,
+          winner,
+          reason,
+          isSpectator: true,
+          wantsToJoinNextGame: s.wantsToJoinNextGame || false
+        }));
+      } catch (err) {
+        console.log(`Failed to send gameEndEarly to spectator ${s.name}`);
+      }
     }
-  }
-});
+  });
   
   lobby.phase = 'results';
   lobby.lastTimeBelowThreePlayers = null;
@@ -471,10 +505,14 @@ lobby.spectators.forEach(s => {
 
 function startGame(lobby) {
   lobby.players.forEach(p => {
-  p.role = null;
-  p.vote = [];
-  p.lastDisconnectTime = null;
-});
+    p.role = null;
+    p.vote = [];
+    p.lastDisconnectTime = null;
+    p.removed = false;
+    p.graceExpiresAt = null;
+    p.submittedWord = false;
+  });
+  
   const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
   if (connectedPlayers.length < 3) {
     console.log(`Not enough connected players to start (${connectedPlayers.length} connected)`);
@@ -505,6 +543,8 @@ function startGame(lobby) {
   lobby.players.forEach(p => {
     p.vote = [];
     p.lastDisconnectTime = null;
+    p.removed = false;
+    p.submittedWord = false;
   });
   
   // Assign roles - only assign to players who don't already have roles
@@ -567,10 +607,9 @@ function startGame(lobby) {
         if (s.wantsToJoinNextGame) {
           setTimeout(() => {
             try {
-              const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
-              const playersInGame = connectedPlayers.filter(p => p.role);
+              const playersInGame = getPlayersInGame(lobby);
               const readyConnectedPlayers = lobby.restartReady.filter(id => 
-                connectedPlayers.some(p => p.id === id)
+                lobby.players.some(p => p.id === id && p.ws?.readyState === 1)
               );
               
               s.ws.send(JSON.stringify({
@@ -697,10 +736,11 @@ function skipCurrentPlayer(lobby, isTimeout = false) {
     return;
   }
   
-  const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
+  // FIX: Use players who are still in the game (not removed and grace not expired)
+  const playersInGame = getPlayersInGame(lobby);
   
   if (lobby.phase === 'round1') {
-    if (lobby.round1.length >= connectedPlayers.length) {
+    if (lobby.round1.length >= playersInGame.length) {
       lobby.phase = 'round2';
       lobby.turn = 0;
       for (let i = 0; i < lobby.players.length; i++) {
@@ -723,7 +763,7 @@ function skipCurrentPlayer(lobby, isTimeout = false) {
       return;
     }
   } else if (lobby.phase === 'round2') {
-    if (lobby.round2.length >= connectedPlayers.length) {
+    if (lobby.round2.length >= playersInGame.length) {
       lobby.phase = 'voting';
       broadcast(lobby, {
         type: 'turnUpdate',
@@ -796,28 +836,28 @@ function startImpostorGuessTimer(lobby) {
         twoImpostorsMode: lobby.twoImpostorsOption || false
       });
       
-      // ADD: Send individual messages to spectators with their join state
-lobby.spectators.forEach(s => {
-  if (s.ws?.readyState === 1) {
-    try {
-      s.ws.send(JSON.stringify({
-        type: 'gameEnd',
-        roles: lobby.players.map(p => ({ name: p.name, role: p.role })),
-        votes: Object.fromEntries(lobby.players.filter(p => p.vote).map(p => [p.name, p.vote])),
-        secretWord: lobby.word,
-        hint: lobby.hint,
-        winner,
-        reason: 'impostorGuessTimeout',
-        impostorGuesses: lobby.impostorGuesses || {},
-        twoImpostorsMode: lobby.twoImpostorsOption || false,
-        isSpectator: true,
-        wantsToJoinNextGame: s.wantsToJoinNextGame || false  // ← ADD THIS
-      }));
-    } catch (err) {
-      console.log(`Failed to send gameEnd (timeout) to spectator ${s.name}`);
-    }
-  }
-});
+      // Send individual messages to spectators with their join state
+      lobby.spectators.forEach(s => {
+        if (s.ws?.readyState === 1) {
+          try {
+            s.ws.send(JSON.stringify({
+              type: 'gameEnd',
+              roles: lobby.players.map(p => ({ name: p.name, role: p.role })),
+              votes: Object.fromEntries(lobby.players.filter(p => p.vote).map(p => [p.name, p.vote])),
+              secretWord: lobby.word,
+              hint: lobby.hint,
+              winner,
+              reason: 'impostorGuessTimeout',
+              impostorGuesses: lobby.impostorGuesses || {},
+              twoImpostorsMode: lobby.twoImpostorsOption || false,
+              isSpectator: true,
+              wantsToJoinNextGame: s.wantsToJoinNextGame || false
+            }));
+          } catch (err) {
+            console.log(`Failed to send gameEnd (timeout) to spectator ${s.name}`);
+          }
+        }
+      });
       
       lobby.phase = 'results';
       lobby.lastTimeBelowThreePlayers = null;
@@ -853,10 +893,27 @@ function cleanupLobby(lobby, lobbyId) {
   
   // Clean up players
   lobby.players = lobby.players.filter(p => {
+    // If connected, keep
     if (p.ws?.readyState === 1) return true;
+    
+    // If manually removed, remove immediately
+    if (p.removed) {
+      console.log(`Removing manually removed player: ${p.name}`);
+      hasChanges = true;
+      
+      const restartIndex = lobby.restartReady.indexOf(p.id);
+      if (restartIndex !== -1) {
+        lobby.restartReady.splice(restartIndex, 1);
+        restartStateChanged = true;
+      }
+      return false;
+    }
+    
+    // Check grace period
     if (p.lastDisconnectTime && now - p.lastDisconnectTime > playerGracePeriod) {
       console.log(`Removing disconnected player after ${playerGracePeriod/1000}s: ${p.name}`);
       hasChanges = true;
+      p.removed = true;
       
       const restartIndex = lobby.restartReady.indexOf(p.id);
       if (restartIndex !== -1) {
@@ -870,10 +927,27 @@ function cleanupLobby(lobby, lobbyId) {
   
   // Clean up spectators
   lobby.spectators = lobby.spectators.filter(s => {
+    // If connected, keep
     if (s.ws?.readyState === 1) return true;
+    
+    // If manually removed, remove immediately
+    if (s.removed) {
+      console.log(`Removing manually removed spectator: ${s.name}`);
+      hasChanges = true;
+      
+      const wantingIndex = lobby.spectatorsWantingToJoin.indexOf(s.id);
+      if (wantingIndex !== -1) {
+        lobby.spectatorsWantingToJoin.splice(wantingIndex, 1);
+        restartStateChanged = true;
+      }
+      return false;
+    }
+    
+    // Check grace period
     if (s.lastDisconnectTime && now - s.lastDisconnectTime > spectatorGracePeriod) {
       console.log(`Removing disconnected spectator after ${spectatorGracePeriod/1000}s: ${s.name}`);
       hasChanges = true;
+      s.removed = true;
       
       const wantingIndex = lobby.spectatorsWantingToJoin.indexOf(s.id);
       if (wantingIndex !== -1) {
@@ -943,7 +1017,8 @@ function cleanupLobby(lobby, lobbyId) {
       players: lobby.players.map(p => ({ 
         id: p.id, 
         name: p.name, 
-        connected: p.ws?.readyState === 1 
+        connected: p.ws?.readyState === 1,
+        role: p.role || null
       })),
       spectators: lobby.spectators.map(s => ({ 
         id: s.id, 
@@ -1209,7 +1284,7 @@ wss.on('connection', (ws, req) => {
             const connectedPlayersBeforeExit = lobby.players.filter(p => p.ws?.readyState === 1).length;
             const connectedPlayersAfterExit = connectedPlayersBeforeExit - 1;
             
-            // If player is impostor, end game immediately (FIX: No grace period for manual exit)
+            // If player is impostor, end game immediately (no grace period for manual exit)
             if (player.role === 'impostor') {
               shouldEndGameImmediately = true;
               endGameReason = 'impostor_left';
@@ -1222,9 +1297,13 @@ wss.on('connection', (ws, req) => {
           }
           
           if (player.isSpectator) {
+            // Mark spectator as removed (manual exit, no grace)
+            player.removed = true;
             lobby.spectators = lobby.spectators.filter(s => s.id !== player.id);
             lobby.spectatorsWantingToJoin = lobby.spectatorsWantingToJoin.filter(id => id !== player.id);
           } else {
+            // Mark player as removed (manual exit, no grace)
+            player.removed = true;
             lobby.players = lobby.players.filter(p => p.id !== player.id);
             lobby.restartReady = lobby.restartReady.filter(id => id !== player.id);
             
@@ -1246,7 +1325,7 @@ wss.on('connection', (ws, req) => {
             }
           }
           
-          // End game immediately if conditions are met (FIX: No grace period for manual exit)
+          // End game immediately if conditions are met (no grace period for manual exit)
           if (shouldEndGameImmediately && lobby.phase !== 'results' && lobby.phase !== 'lobby') {
             console.log(`Game ending immediately due to player exit: ${endGameReason}`);
             endGameEarly(lobby, endGameReason);
@@ -1291,7 +1370,8 @@ wss.on('connection', (ws, req) => {
               players: lobby.players.map(p => ({ 
                 id: p.id, 
                 name: p.name, 
-                connected: p.ws?.readyState === 1 
+                connected: p.ws?.readyState === 1,
+                role: p.role || null
               })),
               spectators: lobby.spectators.map(s => ({ 
                 id: s.id, 
@@ -1331,7 +1411,7 @@ wss.on('connection', (ws, req) => {
           // Only allow restart in results phase
           if (lobby.phase !== 'results' && lobby.phase !== 'lobby') return;
           
-          // Toggle wantsToJoinNextGame (FIX: spectators don't vote, they only join)
+          // Toggle wantsToJoinNextGame
           player.wantsToJoinNextGame = !player.wantsToJoinNextGame;
           
           if (player.wantsToJoinNextGame) {
@@ -1362,7 +1442,8 @@ wss.on('connection', (ws, req) => {
           players: lobby.players.map(p => ({ 
             id: p.id, 
             name: p.name, 
-            connected: p.ws?.readyState === 1 
+            connected: p.ws?.readyState === 1,
+            role: p.role || null
           })),
           spectators: lobby.spectators.map(s => ({ 
             id: s.id, 
@@ -1388,7 +1469,8 @@ wss.on('connection', (ws, req) => {
           players: lobby.players.map(p => ({ 
             id: p.id, 
             name: p.name, 
-            connected: p.ws?.readyState === 1 
+            connected: p.ws?.readyState === 1,
+            role: p.role || null
           })),
           spectators: lobby.spectators.map(s => ({ 
             id: s.id, 
@@ -1441,9 +1523,10 @@ wss.on('connection', (ws, req) => {
           lobby.turnTimeout = null;
         }
 
-        const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
+        // FIX: Use players who are still in the game (not removed and grace not expired)
+        const playersInGame = getPlayersInGame(lobby);
         
-        if (lobby.phase === 'round1' && lobby.round1.length >= connectedPlayers.length) {
+        if (lobby.phase === 'round1' && lobby.round1.length >= playersInGame.length) {
           lobby.phase = 'round2';
           lobby.turn = 0;
           for (let i = 0; i < lobby.players.length; i++) {
@@ -1464,7 +1547,7 @@ wss.on('connection', (ws, req) => {
           
           startTurnTimer(lobby);
           return;
-        } else if (lobby.phase === 'round2' && lobby.round2.length >= connectedPlayers.length) {
+        } else if (lobby.phase === 'round2' && lobby.round2.length >= playersInGame.length) {
           lobby.phase = 'voting';
           broadcast(lobby, {
             type: 'turnUpdate',
@@ -1531,12 +1614,13 @@ wss.on('connection', (ws, req) => {
           player.vote = [msg.vote];
         }
 
-        const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
+        // Use players who are still in the game (not removed and grace not expired)
+        const playersInGame = getPlayersInGame(lobby);
         
-        // Check if all players have voted
-        if (connectedPlayers.every(p => p.vote && p.vote.length > 0)) {
+        // Check if all players in game have voted
+        if (playersInGame.every(p => p.vote && p.vote.length > 0)) {
           const voteCounts = {};
-          connectedPlayers.forEach(p => {
+          playersInGame.forEach(p => {
             p.vote.forEach(v => {
               voteCounts[v] = (voteCounts[v] || 0) + 1;
             });
@@ -1645,7 +1729,7 @@ wss.on('connection', (ws, req) => {
             broadcast(lobby, {
               type: 'gameEnd',
               roles: lobby.players.map(p => ({ name: p.name, role: p.role })),
-              votes: Object.fromEntries(connectedPlayers.map(p => [p.name, p.vote])),
+              votes: Object.fromEntries(playersInGame.map(p => [p.name, p.vote])),
               ejected: ejectedPlayers,
               secretWord: lobby.word,
               hint: lobby.hint,
@@ -1653,27 +1737,27 @@ wss.on('connection', (ws, req) => {
               twoImpostorsMode: lobby.twoImpostorsOption || false
             });
             
-            // ADD: Send individual messages to spectators with their join state
-lobby.spectators.forEach(s => {
-  if (s.ws?.readyState === 1) {
-    try {
-      s.ws.send(JSON.stringify({
-        type: 'gameEnd',
-        roles: lobby.players.map(p => ({ name: p.name, role: p.role })),
-        votes: Object.fromEntries(connectedPlayers.map(p => [p.name, p.vote])),
-        ejected: ejectedPlayers,
-        secretWord: lobby.word,
-        hint: lobby.hint,
-        winner,
-        twoImpostorsMode: lobby.twoImpostorsOption || false,
-        isSpectator: true,
-        wantsToJoinNextGame: s.wantsToJoinNextGame || false  // ← ADD THIS
-      }));
-    } catch (err) {
-      console.log(`Failed to send gameEnd to spectator ${s.name}`);
-    }
-  }
-});
+            // Send individual messages to spectators with their join state
+            lobby.spectators.forEach(s => {
+              if (s.ws?.readyState === 1) {
+                try {
+                  s.ws.send(JSON.stringify({
+                    type: 'gameEnd',
+                    roles: lobby.players.map(p => ({ name: p.name, role: p.role })),
+                    votes: Object.fromEntries(playersInGame.map(p => [p.name, p.vote])),
+                    ejected: ejectedPlayers,
+                    secretWord: lobby.word,
+                    hint: lobby.hint,
+                    winner,
+                    twoImpostorsMode: lobby.twoImpostorsOption || false,
+                    isSpectator: true,
+                    wantsToJoinNextGame: s.wantsToJoinNextGame || false
+                  }));
+                } catch (err) {
+                  console.log(`Failed to send gameEnd to spectator ${s.name}`);
+                }
+              }
+            });
             
             lobby.phase = 'results';
             lobby.lastTimeBelowThreePlayers = null;
@@ -1699,7 +1783,7 @@ lobby.spectators.forEach(s => {
             broadcast(lobby, {
               type: 'gameEnd',
               roles: lobby.players.map(p => ({ name: p.name, role: p.role })),
-              votes: Object.fromEntries(connectedPlayers.map(p => [p.name, p.vote])),
+              votes: Object.fromEntries(playersInGame.map(p => [p.name, p.vote])),
               secretWord: lobby.word,
               hint: lobby.hint,
               winner,
@@ -1784,6 +1868,28 @@ lobby.spectators.forEach(s => {
             twoImpostorsMode: lobby.twoImpostorsOption || false
           });
           
+          // Send individual messages to spectators with their join state
+          lobby.spectators.forEach(s => {
+            if (s.ws?.readyState === 1) {
+              try {
+                s.ws.send(JSON.stringify({
+                  type: 'gameEnd',
+                  roles: lobby.players.map(p => ({ name: p.name, role: p.role })),
+                  votes: Object.fromEntries(lobby.players.filter(p => p.vote).map(p => [p.name, p.vote])),
+                  secretWord: lobby.word,
+                  hint: lobby.hint,
+                  winner,
+                  impostorGuesses: lobby.impostorGuesses,
+                  twoImpostorsMode: lobby.twoImpostorsOption || false,
+                  isSpectator: true,
+                  wantsToJoinNextGame: s.wantsToJoinNextGame || false
+                }));
+              } catch (err) {
+                console.log(`Failed to send gameEnd to spectator ${s.name}`);
+              }
+            }
+          });
+          
           lobby.phase = 'results';
           lobby.lastTimeBelowThreePlayers = null;
           lobby.turnEndsAt = null;
@@ -1815,11 +1921,12 @@ lobby.spectators.forEach(s => {
         
         sendRestartUpdates(lobby);
         
+        const playersInGame = getPlayersInGame(lobby);
         const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
         const connectedSpectators = lobby.spectators.filter(s => s.ws?.readyState === 1);
         
         // Get players who were in the previous game (have roles)
-        const playersInGame = lobby.players.filter(p => p.role);
+        const playersWithRoles = lobby.players.filter(p => p.role);
         
         // Get connected players who were in the previous game and have pressed restart
         const readyConnectedPlayers = lobby.restartReady.filter(id => 
@@ -1831,15 +1938,15 @@ lobby.spectators.forEach(s => {
           connectedSpectators.some(s => s.id === id)
         );
         
-        console.log(`Restart check for lobby ${lobbyId}: ${playersInGame.length} players with roles, ${readyConnectedPlayers.length} ready, ${connectedPlayers.length} total connected players, ${spectatorsWantingToJoin.length} spectators wanting to join`);
+        console.log(`Restart check for lobby ${lobbyId}: ${playersWithRoles.length} players with roles, ${readyConnectedPlayers.length} ready, ${connectedPlayers.length} total connected players, ${spectatorsWantingToJoin.length} spectators wanting to join`);
         
         // FIXED RESTART LOGIC: 
         // 1. All previous game players must be ready OR disconnected and removed
         // 2. Then we need at least 3 total participants (ready players + spectators wanting to join)
         
         // First, check if all previous game players are accounted for
-        const disconnectedPlayersRemaining = playersInGame.filter(p => 
-          p.ws?.readyState !== 1 && p.lastDisconnectTime && 
+        const disconnectedPlayersRemaining = playersWithRoles.filter(p => 
+          p.ws?.readyState !== 1 && !p.removed && p.lastDisconnectTime && 
           (Date.now() - p.lastDisconnectTime <= RESULTS_GRACE_PERIOD)
         );
         
@@ -1850,7 +1957,7 @@ lobby.spectators.forEach(s => {
         }
         
         // Now check if all connected players from previous game are ready
-        const connectedPlayersFromPreviousGame = playersInGame.filter(p => p.ws?.readyState === 1);
+        const connectedPlayersFromPreviousGame = playersWithRoles.filter(p => p.ws?.readyState === 1);
         const allConnectedPlayersReady = connectedPlayersFromPreviousGame.every(p => 
           lobby.restartReady.includes(p.id)
         );
@@ -1881,13 +1988,22 @@ lobby.spectators.forEach(s => {
               spectator.wantsToJoinNextGame = false; // Reset only for spectators who are joining
               spectator.role = null;
               spectator.vote = [];
+              spectator.removed = false;
+              spectator.lastDisconnectTime = null;
               lobby.players.push(spectator);
               
               // FIX: Clean the name by removing eye icon and "Spectator-" prefix
-let cleanName = spectator.name;
-cleanName = cleanName.replace('👁️ ', ''); // Remove eye icon
-cleanName = cleanName.replace(/^Spectator-\d+$/, 'Player'); // Remove auto-generated spectator name
-spectator.name = cleanName; // ← Update the actual player object
+              let cleanName = spectator.name;
+              cleanName = cleanName.replace('👁️ ', ''); // Remove eye icon
+              
+              // Check if it's a generated spectator name
+              if (/^Spectator-\d+$/.test(cleanName)) {
+                // Generate a proper player name
+                const playerNumber = Math.floor(Math.random() * 1000);
+                cleanName = `Player-${playerNumber}`;
+              }
+              
+              spectator.name = cleanName; // Update the actual player object
               
               try {
                 spectator.ws.send(JSON.stringify({
@@ -1941,7 +2057,10 @@ spectator.name = cleanName; // ← Update the actual player object
         return;
       }
       
-      player.lastDisconnectTime = Date.now();
+      // Only mark as disconnected if not manually removed
+      if (!player.removed) {
+        player.lastDisconnectTime = Date.now();
+      }
       
       const wasGameInProgress = (lobby.phase !== 'lobby' && lobby.phase !== 'results' && lobby.phase !== 'impostorGuess');
       
@@ -1954,7 +2073,8 @@ spectator.name = cleanName; // ← Update the actual player object
         players: lobby.players.map(p => ({ 
           id: p.id, 
           name: p.name, 
-          connected: p.ws?.readyState === 1 
+          connected: p.ws?.readyState === 1,
+          role: p.role || null
         })),
         spectators: lobby.spectators.map(s => ({ 
           id: s.id, 
@@ -2024,7 +2144,11 @@ spectator.name = cleanName; // ← Update the actual player object
         reconnectionAttempts: 0,
         connectionEpoch: 1,
         role: null,
-        vote: []
+        vote: [],
+        removed: false,
+        graceExpiresAt: null,
+        lastDisconnectTime: null,
+        submittedWord: false
       };
       ws.connectionEpoch = 1;
       lobby.players.push(player);
@@ -2057,7 +2181,8 @@ spectator.name = cleanName; // ← Update the actual player object
       players: lobby.players.map(p => ({ 
         id: p.id, 
         name: p.name, 
-        connected: p.ws?.readyState === 1 
+        connected: p.ws?.readyState === 1,
+        role: p.role || null
       })),
       spectators: lobby.spectators.map(s => ({ 
         id: s.id, 
@@ -2126,7 +2251,8 @@ spectator.name = cleanName; // ← Update the actual player object
         players: lobby.players.map(p => ({ 
           id: p.id, 
           name: p.name, 
-          connected: p.ws?.readyState === 1 
+          connected: p.ws?.readyState === 1,
+          role: p.role || null
         })),
         spectators: lobby.spectators.map(s => ({ 
           id: s.id, 
@@ -2189,7 +2315,9 @@ spectator.name = cleanName; // ← Update the actual player object
         connectionId,
         lastActionTime: Date.now(),
         wantsToJoinNextGame: false,
-        connectionEpoch: 1
+        connectionEpoch: 1,
+        removed: false,
+        lastDisconnectTime: null
       };
       ws.connectionEpoch = 1;
       lobby.spectators.push(player);
@@ -2204,15 +2332,14 @@ spectator.name = cleanName; // ← Update the actual player object
       }, 100);
     }
 
-    // Send restart state update to the reconnected spectator if in results or lobby phase
-    if (lobby.phase === 'results' || lobby.phase === 'lobby') {
+    // FIX: Send restart state update IMMEDIATELY after reconnection if in results phase
+    if (lobby.phase === 'results' && existingSpectator) {
       setTimeout(() => {
         if (player.ws?.readyState === 1) {
           try {
-            const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
-            const playersInGame = connectedPlayers.filter(p => p.role);
+            const playersInGame = getPlayersInGame(lobby);
             const readyConnectedPlayers = lobby.restartReady.filter(id =>
-              connectedPlayers.some(p => p.id === id)
+              lobby.players.some(p => p.id === id && p.ws?.readyState === 1)
             );
 
             player.ws.send(JSON.stringify({
@@ -2228,7 +2355,7 @@ spectator.name = cleanName; // ← Update the actual player object
             console.log(`Failed to send restart update to reconnected spectator ${player.name}`);
           }
         }
-      }, 500);
+      }, 200); // Increased delay to ensure lobby assignment is processed first
     }
 
     ws.send(JSON.stringify({
@@ -2248,7 +2375,8 @@ spectator.name = cleanName; // ← Update the actual player object
       players: lobby.players.map(p => ({ 
         id: p.id, 
         name: p.name, 
-        connected: p.ws?.readyState === 1 
+        connected: p.ws?.readyState === 1,
+        role: p.role || null
       })),
       spectators: lobby.spectators.map(s => ({ 
         id: s.id, 
@@ -2347,7 +2475,9 @@ spectator.name = cleanName; // ← Update the actual player object
           roles: lobby.players.map(p => ({ name: p.name, role: p.role })),
           secretWord: lobby.word,
           hint: lobby.hint,
-          winner
+          winner,
+          isSpectator: true,
+          wantsToJoinNextGame: spectator.wantsToJoinNextGame || false  // ← ADD THIS
         }));
       } else if (lobby.phase === 'impostorGuess') {
         spectator.ws.send(JSON.stringify({
@@ -2399,12 +2529,11 @@ spectator.name = cleanName; // ← Update the actual player object
       return;
     }
     
-    const connectedPlayers = lobby.players.filter(p => p.ws?.readyState === 1);
-    const playersInGame = connectedPlayers.filter(p => p.role);
+    const playersInGame = getPlayersInGame(lobby);
     
     // Filter restartReady to only include connected players
     const readyConnectedPlayers = lobby.restartReady.filter(id => 
-      connectedPlayers.some(p => p.id === id)
+      lobby.players.some(p => p.id === id && p.ws?.readyState === 1)
     );
     
     // Calculate total ready participants (players only - spectators don't count for restart)
