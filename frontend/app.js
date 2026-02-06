@@ -1113,6 +1113,14 @@ function connect() {
         }
 
         if (d.type === 'turnUpdate') {
+          // Preserve spectator join state during ongoing rounds
+if (isSpectator && d.wantsToJoinNextGame !== undefined) {
+  spectatorWantsToJoin = d.wantsToJoinNextGame;
+
+  if (d.wantsToJoinNextGame) {
+    spectatorHasClickedRestart = true;
+  }
+}
           isEjectedImpostor = false;
           
           const formatWord = (entry) => {
