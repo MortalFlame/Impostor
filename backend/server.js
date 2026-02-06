@@ -602,6 +602,11 @@ function startGame(lobby) {
       }
     }
   });
+
+  // ADD THIS: Track expected submissions for this round
+const playersWithRoles = lobby.players.filter(p => p.role);
+lobby.expectedSubmissions = playersWithRoles.length;
+console.log(`Round1 starting with ${lobby.expectedSubmissions} expected submissions`);
   
    // Send game state to spectators
   lobby.spectators.forEach(s => {
@@ -765,13 +770,20 @@ function skipCurrentPlayer(lobby, isTimeout = false) {
   const playersInGame = getPlayersInGame(lobby);
   
   if (lobby.phase === 'round1') {
-    if (lobby.round1.length >= playersInGame.length) {
-      lobby.phase = 'round2';
-      lobby.turn = 0;
-      for (let i = 0; i < lobby.players.length; i++) {
-        if (lobby.players[i]?.ws?.readyState === 1) {
-          lobby.turn = i;
-          break;
+  if (lobby.round1.length >= lobby.expectedSubmissions) {
+    console.log(`✓ Round1 complete: ${lobby.round1.length}/${lobby.expectedSubmissions} submissions`);
+    lobby.phase = 'round2';
+    
+    // UPDATE: Recalculate expected submissions for round2 based on who's still in game
+    const playersInGame = getPlayersInGame(lobby);
+    lobby.expectedSubmissions = playersInGame.length;
+    console.log(`Round2 starting with ${lobby.expectedSubmissions} expected submissions`);
+    
+    lobby.turn = 0;
+    for (let i = 0; i < lobby.players.length; i++) {
+      if (lobby.players[i]?.ws?.readyState === 1) {
+        lobby.turn = i;
+        break;
         }
       }
       
@@ -788,7 +800,8 @@ function skipCurrentPlayer(lobby, isTimeout = false) {
       return;
     }
   } else if (lobby.phase === 'round2') {
-    if (lobby.round2.length >= playersInGame.length) {
+  if (lobby.round2.length >= lobby.expectedSubmissions) {
+    console.log(`✓ Round2 complete after timeout: ${lobby.round2.length}/${lobby.expectedSubmissions} submissions`);
       lobby.phase = 'voting';
       broadcast(lobby, {
         type: 'turnUpdate',
@@ -1590,9 +1603,14 @@ wss.on('connection', (ws, req) => {
         console.log(`  Players in game: ${playersInGame.length}`);
         console.log(`  Checking: ${lobby.phase === 'round1' ? lobby.round1.length : lobby.round2.length} >= ${playersInGame.length}`);
         
-        if (lobby.phase === 'round1' && lobby.round1.length >= playersInGame.length) {
+        if (lobby.phase === 'round1' && lobby.round1.length >= lobby.expectedSubmissions) {
           console.log(`✓ Advancing to round2`);
           lobby.phase = 'round2';
+          // Recalculate expected submissions for round2
+  const playersStillInGame = getPlayersInGame(lobby);
+  lobby.expectedSubmissions = playersStillInGame.length;
+console.log(`Round2 starting with ${lobby.expectedSubmissions} expected submissions`);
+          
           lobby.turn = 0;
           for (let i = 0; i < lobby.players.length; i++) {
             if (lobby.players[i]?.ws?.readyState === 1) {
@@ -1612,8 +1630,8 @@ wss.on('connection', (ws, req) => {
           
           startTurnTimer(lobby);
           return;
-        } else if (lobby.phase === 'round2' && lobby.round2.length >= playersInGame.length) {
-          console.log(`✓ All players submitted for round2, advancing to voting`);
+        } else if (lobby.phase === 'round2' && lobby.round2.length >= lobby.expectedSubmissions) {
+  console.log(`✓ Round2 complete: ${lobby.round2.length}/${lobby.expectedSubmissions} submissions`);
           lobby.phase = 'voting';
           broadcast(lobby, {
             type: 'turnUpdate',
