@@ -1270,3 +1270,39 @@ input:disabled + .slider {
     gap: 6px;
   }
 }
+
+/* Floating Tooltip Styles */
+.custom-tooltip {
+  position: absolute;
+  background-color: #34495e; /* Dark blue-grey background */
+  color: #ecf0f1;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  width: 280px;
+  max-width: 90vw; /* Don't overflow mobile screens */
+  z-index: 10000;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+  border: 1px solid #7f8c8d;
+  pointer-events: none; /* Allows clicking through it if needed, or set to auto to select text */
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+
+.custom-tooltip.visible {
+  opacity: 1;
+}
+
+/* Arrow for the tooltip (optional aesthetic) */
+.custom-tooltip::after {
+  content: "";
+  position: absolute;
+  bottom: 100%; /* At the top of the tooltip */
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: transparent transparent #34495e transparent;
+}
