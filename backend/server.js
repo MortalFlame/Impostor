@@ -1447,6 +1447,13 @@ wss.on('connection', (ws, req) => {
             lobby.players = lobby.players.filter(p => p.id !== player.id);
             lobby.restartReady = lobby.restartReady.filter(id => id !== player.id);
             
+            // FIX: Update expectedSubmissions if game is in active round phase
+  if (lobby.phase === 'round1' || lobby.phase === 'round2') {
+    const playersInGame = getPlayersInGame(lobby);
+    lobby.expectedSubmissions = playersInGame.length;
+    console.log(`Player exit: Updated expectedSubmissions to ${lobby.expectedSubmissions} (${playersInGame.length} players remain)`);
+  }
+            
             if (lobby.owner === player.id && lobby.players.length > 0) {
               const newOwner = lobby.players.find(p => p.ws?.readyState === 1);
               if (newOwner) {
