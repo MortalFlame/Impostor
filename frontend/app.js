@@ -1030,6 +1030,28 @@ function connect() {
           lobbyCard.classList.add('hidden');
           gameCard.classList.remove('hidden');
           
+          // Show game mode indicator
+          const gameModeIndicator = document.getElementById('gameModeIndicator');
+          const impostorCountText = document.getElementById('impostorCountText');
+          const guessWordBadge = document.getElementById('guessWordBadge');
+          
+          if (gameModeIndicator && impostorCountText) {
+            // Set impostor count
+            const impostorCount = d.twoImpostorsMode ? 2 : 1;
+            impostorCountText.textContent = impostorCount === 1 ? '1 Impostor' : '2 Impostors';
+            
+            // Show/hide guess word badge
+            if (guessWordBadge) {
+              if (d.impostorGuessOption || impostorGuessOption) {
+                guessWordBadge.classList.remove('hidden');
+              } else {
+                guessWordBadge.classList.add('hidden');
+              }
+            }
+            gameModeIndicator.classList.remove('hidden');
+            document.body.classList.add('game-mode-active');
+          }
+          
           exitLobbyBtn.style.display = 'block';
           
           if (!isSpectator) {
@@ -1297,6 +1319,20 @@ if (currentPlayerObj && currentPlayerObj.connected === false) {
 
         if (d.type === 'gameEndEarly') {
           stopTurnTimerAnimation();
+          
+          // Hide game mode indicator
+          const gameModeIndicator = document.getElementById('gameModeIndicator');
+          if (gameModeIndicator) {
+            gameModeIndicator.classList.add('hidden');
+            document.body.classList.remove('game-mode-active');
+          }
+          
+          // Hide game mode indicator
+          const gameModeIndicator = document.getElementById('gameModeIndicator');
+          if (gameModeIndicator) {
+            gameModeIndicator.classList.add('hidden');
+            document.body.classList.remove('game-mode-active');
+          }
           stopImpostorGuessTimerAnimation();
           isMyTurn = false;
           currentTurnEndsAt = null;
