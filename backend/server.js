@@ -1848,7 +1848,7 @@ console.log(`Round2 starting with ${lobby.expectedSubmissions} expected submissi
         }
 
         // Use players who are still in the game (not removed and grace not expired)
-        const playersInGame = getPlayersInGame(lobby);
+        // const playersInGame = getPlayersInGame(lobby);
         
         // Check if all players in game have voted
         if (playersInGame.every(p => p.vote && p.vote.length > 0)) {
