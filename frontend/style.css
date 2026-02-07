@@ -1062,3 +1062,139 @@ input:disabled + .slider {
   color: #000 !important;
   font-weight: bold !important;
 }
+
+/* Game options container for both toggles on same line */
+#gameOptionsContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 8px 0;
+  padding: 8px 12px;
+  background: rgba(13, 17, 28, 0.6);
+  border-radius: 10px;
+  font-size: 13px;
+  border: 1px solid rgba(106, 139, 255, 0.2);
+  flex-wrap: wrap;
+}
+
+/* Game options row to keep both toggles on same line */
+.game-options-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+/* Individual toggle container */
+.game-option-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* Separator between toggles */
+.toggle-separator {
+  color: rgba(106, 139, 255, 0.4);
+  font-weight: bold;
+  padding: 0 2px;
+  flex-shrink: 0;
+  line-height: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+}
+
+/* Toggle labels */
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.toggle-label.disabled {
+  color: #95a5a6;
+  cursor: not-allowed;
+}
+
+.info-icon {
+  cursor: help;
+  color: #6a8bff;
+  font-size: 12px;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(106, 139, 255, 0.1);
+}
+
+.info-icon:hover {
+  background: rgba(106, 139, 255, 0.2);
+}
+
+/* Toggle switch styles - THIS IS THE KEY FIX */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 46px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+/* Hide the actual checkbox but keep it functional */
+.switch input[type="checkbox"] {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #2c3e50;
+  transition: .4s;
+  border-radius: 22px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: #6a8bff;
+}
+
+input:checked + .slider:before {
+  transform: translateX(24px);
+}
+
+input:disabled + .slider {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
