@@ -1909,75 +1909,68 @@ function toggleImpostorGuessOption() {
   }));
 }
 
-function updateTwoImpostorsToggle() {
+function updateGameOptions() {
   const gameOptionsContainer = document.getElementById('gameOptionsContainer');
   const twoImpostorsToggle = document.getElementById('twoImpostorsToggle');
+  const impostorGuessToggle = document.getElementById('impostorGuessToggle');
   
-  if (!gameOptionsContainer || !twoImpostorsToggle) return;
+  if (!gameOptionsContainer || !twoImpostorsToggle || !impostorGuessToggle) return;
   
+  // Hide entire container for spectators
   if (isSpectator) {
     gameOptionsContainer.style.display = 'none';
     return;
   }
   
-  // Show the container for players
+  // Show container for players
   gameOptionsContainer.style.display = 'flex';
   
-  const checkbox = twoImpostorsToggle.querySelector('input[type="checkbox"]');
-  const label = twoImpostorsToggle.querySelector('.toggle-label');
+  // Update Two Impostors toggle
+  const twoImpostorsCheckbox = twoImpostorsToggle.querySelector('input[type="checkbox"]');
+  const twoImpostorsLabel = twoImpostorsToggle.querySelector('.toggle-label');
   
-  if (checkbox && label) {
-    checkbox.checked = twoImpostorsOption;
-    checkbox.disabled = !isOwner;
+  if (twoImpostorsCheckbox && twoImpostorsLabel) {
+    twoImpostorsCheckbox.checked = twoImpostorsOption;
+    twoImpostorsCheckbox.disabled = !isOwner;
     
     if (isOwner) {
-      label.style.color = '#fff';
-      label.style.cursor = 'pointer';
-      checkbox.style.cursor = 'pointer';
+      twoImpostorsLabel.style.color = '#fff';
+      twoImpostorsLabel.style.cursor = 'pointer';
+      twoImpostorsCheckbox.style.cursor = 'pointer';
       twoImpostorsToggle.style.opacity = '1';
     } else {
-      label.style.color = '#95a5a6';
-      label.style.cursor = 'not-allowed';
-      checkbox.style.cursor = 'not-allowed';
+      twoImpostorsLabel.style.color = '#95a5a6';
+      twoImpostorsLabel.style.cursor = 'not-allowed';
+      twoImpostorsCheckbox.style.cursor = 'not-allowed';
       twoImpostorsToggle.style.opacity = '0.7';
     }
   }
-}
-
-function updateImpostorGuessToggle() {
-  const gameOptionsContainer = document.getElementById('gameOptionsContainer');
-  const impostorGuessToggle = document.getElementById('impostorGuessToggle');
   
-  if (!gameOptionsContainer || !impostorGuessToggle) return;
+  // Update Impostor Guess toggle
+  const impostorGuessCheckbox = impostorGuessToggle.querySelector('input[type="checkbox"]');
+  const impostorGuessLabel = impostorGuessToggle.querySelector('.toggle-label');
   
-  if (isSpectator) {
-    gameOptionsContainer.style.display = 'none';
-    return;
-  }
-  
-  // Show the container for players
-  gameOptionsContainer.style.display = 'flex';
-  
-  const checkbox = impostorGuessToggle.querySelector('input[type="checkbox"]');
-  const label = impostorGuessToggle.querySelector('.toggle-label');
-  
-  if (checkbox && label) {
-    checkbox.checked = impostorGuessOption;
-    checkbox.disabled = !isOwner;
+  if (impostorGuessCheckbox && impostorGuessLabel) {
+    impostorGuessCheckbox.checked = impostorGuessOption;
+    impostorGuessCheckbox.disabled = !isOwner;
     
     if (isOwner) {
-      label.style.color = '#fff';
-      label.style.cursor = 'pointer';
-      checkbox.style.cursor = 'pointer';
+      impostorGuessLabel.style.color = '#fff';
+      impostorGuessLabel.style.cursor = 'pointer';
+      impostorGuessCheckbox.style.cursor = 'pointer';
       impostorGuessToggle.style.opacity = '1';
     } else {
-      label.style.color = '#95a5a6';
-      label.style.cursor = 'not-allowed';
-      checkbox.style.cursor = 'not-allowed';
+      impostorGuessLabel.style.color = '#95a5a6';
+      impostorGuessLabel.style.cursor = 'not-allowed';
+      impostorGuessCheckbox.style.cursor = 'not-allowed';
       impostorGuessToggle.style.opacity = '0.7';
     }
   }
 }
+
+// Delete updateTwoImpostorsToggle() and updateImpostorGuessToggle()
+// Replace all calls to them with updateGameOptions()
+
 
 function showImpostorGuessInfo() {
   alert('When enabled, if impostors are voted out, they get a 30-second last chance to guess the secret word. If any impostor guesses correctly, they win! Otherwise, civilians win!\n\n• Single impostor mode: Only the ejected impostor guesses\n• Two impostors mode: All ejected impostors get to guess');
@@ -1985,59 +1978,6 @@ function showImpostorGuessInfo() {
 
 function showTwoImpostorsInfo() {
   alert('When enabled, the game will have 2 impostors instead of 1. In voting phase, select 2 players you think are impostors. The top 2 voted players will be ejected. Game winning logic:\n\n• Both impostors voted out → Civilians win\n• No impostors voted out → Impostors win\n• One impostor voted out → Draw\n\nNote: Requires at least 4 players for balanced gameplay.');
-}
-
-// Also update the runDebugMode function:
-function runDebugMode() {
-  console.log("DEBUG: Running in offline mode for JSFiddle");
-
-  // 1. Set Header Info
-  lobbyCodeDisplay.textContent = "5555";
-  playerNameDisplay.textContent = "Alex (Host)";
-  updateConnectionStatus('connected', 'Connected');
-
-  // 2. Set Input values
-  nickname.value = "Alex";
-  lobbyId.value = "5555";
-
-  // 3. Mock Player List (5 players total)
-  const mockPlayers = [
-    { name: "Alex", role: "civilian" }, 
-    { name: "Jordan", role: "impostor" }, 
-    { name: "Taylor", role: "civilian" }, 
-    { name: "Morgan", role: "civilian" }, 
-    { name: "Casey", role: "civilian" }
-  ];
-  updatePlayerList(mockPlayers);
-
-  // 4. Mock Lobby List
-  const mockLobbies = [{
-    id: "5555",
-    host: "alex",
-    playerCount: 5,
-    impostorGuessOption: true,
-    twoImpostorsOption: false,
-    createdAt: Date.now()
-  }];
-  updateLobbyList(mockLobbies);
-
-  // 5. Enable Buttons
-  start.disabled = false;
-  exitLobbyBtn.style.display = 'block';
-  
-  // 6. Set up toggles for host
-  isOwner = true;
-  impostorGuessOption = true;
-  twoImpostorsOption = false;
-  
-  // Update the container display
-  const gameOptionsContainer = document.getElementById('gameOptionsContainer');
-  if (gameOptionsContainer) {
-    gameOptionsContainer.style.display = 'flex';
-  }
-  
-  updateImpostorGuessToggle();
-  updateTwoImpostorsToggle();
 }
 
 join.onclick = () => joinAsPlayer(false);
