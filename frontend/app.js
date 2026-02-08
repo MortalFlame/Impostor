@@ -1253,13 +1253,7 @@ if (currentPlayerObj && currentPlayerObj.connected === false) {
           } else {
             console.log('Creating player voting UI');
             let votingHeader = '<h3>Vote</h3>';
-
-          
-          if (isSpectator || d.isSpectator) {
-            voting.innerHTML = '<h3>Spectating Votes</h3>' +
-              d.players.map(p => `<div class="spectator-vote-btn">${p}</div>`).join('');
-          } else {
-            let votingHeader = '<h3>Vote</h3>';
+            
             if (activeImpostorCount >= 2) {
               votingHeader += `<p style="color:#f39c12; font-size: 12px; margin-top: -5px; margin-bottom: 10px;">Select ${activeImpostorCount} players you think are impostors</p>`;
               votingHeader += `<div id="voteCountDisplay" style="color:#f39c12; font-weight:bold; margin-bottom: 10px;">Selected: 0/${activeImpostorCount}</div>`;
