@@ -1227,7 +1227,7 @@ if (currentPlayerObj && currentPlayerObj.connected === false) {
 
           
           // Use dynamic impostor count from server
-          const activeImpostorCount = d.activeImpostorCount || (twoImpostorsMode ? 2 : 1);
+          // const activeImpostorCount = d.activeImpostorCount || (twoImpostorsMode ? 2 : 1);
           
           if (activeImpostorCount >= 2) {
             turnEl.textContent = isSpectator ? 
