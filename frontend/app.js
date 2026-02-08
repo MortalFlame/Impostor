@@ -1205,26 +1205,23 @@ if (currentPlayerObj && currentPlayerObj.connected === false) {
           }
         }
 
-                if (d.type === 'startVoting') {
+                        if (d.type === 'startVoting') {
           stopTurnTimerAnimation();
           stopImpostorGuessTimerAnimation();
           isEjectedImpostor = false;
           
           twoImpostorsMode = d.twoImpostorsMode || false;
           
-          // Update global activeImpostorCount from server
-          activeImpostorCount = d.activeImpostorCount || (twoImpostorsMode ? 2 : 1);
+          // Use the activeImpostorCount from server (critical!)
+          const activeImpostorCount = d.activeImpostorCount || 1;
           
           selectedVotes = [];
           hasSubmittedVotes = false;
 
           console.log(`========== VOTING PHASE ==========`);
-  console.log(`isSpectator: ${isSpectator}`);
-  console.log(`spectatorWantsToJoin: ${spectatorWantsToJoin}`);
-  console.log(`spectatorHasClickedRestart: ${spectatorHasClickedRestart}`);
-  console.log(`activeImpostorCount: ${activeImpostorCount}`);
-  console.log(`==================================`);
-
+          console.log(`isSpectator: ${isSpectator}`);
+          console.log(`activeImpostorCount from server: ${activeImpostorCount}`);
+          console.log(`==================================`);
           
           // Use dynamic impostor count from server
           const activeImpostorCount = d.activeImpostorCount || (twoImpostorsMode ? 2 : 1);
