@@ -96,6 +96,8 @@ let lobbyListRefreshInterval = null;
 
 let impostorGuessTimer = null;
 let impostorGuessEndsAt = null;
+let votingTimer = null;
+let votingEndsAt = null;
 let isImpostor = false;
 let isEjectedImpostor = false;
 let isOwner = false;
@@ -334,6 +336,55 @@ function stopImpostorGuessTimerAnimation() {
     impostorGuessTimer = null;
   }
   impostorGuessEndsAt = null;
+  timerProgress.style.strokeDashoffset = 0;
+  timerText.textContent = '30';
+  turnTimerEl.classList.add('hidden');
+}
+
+function startVotingTimerAnimation(endsAt) {
+  stopVotingTimerAnimation();
+  
+  votingEndsAt = endsAt;
+  
+  if (isSpectator) {
+    turnTimerEl.classList.add('hidden');
+    return;
+  }
+  
+  turnTimerEl.classList.remove('hidden');
+  
+  function animateVotingTimer() {
+    const remainingMs = Math.max(0, votingEndsAt - Date.now());
+    const timeLeftSeconds = Math.ceil(remainingMs / 1000);
+    
+    if (remainingMs <= 0) {
+      stopVotingTimerAnimation();
+      turnTimerEl.classList.add('hidden');
+      return;
+    }
+    
+    const circumference = 2 * Math.PI * 18;
+    const totalDuration = 30000;
+    const progress = (remainingMs / totalDuration) * 100;
+    const offset = circumference - (progress / 100) * circumference;
+    
+    updateTimerColor(timeLeftSeconds);
+    timerProgress.style.strokeDashoffset = offset;
+    
+    timerText.textContent = timeLeftSeconds;
+    
+    votingTimer = requestAnimationFrame(animateVotingTimer);
+  }
+  
+  votingTimer = requestAnimationFrame(animateVotingTimer);
+}
+
+function stopVotingTimerAnimation() {
+  if (votingTimer) {
+    cancelAnimationFrame(votingTimer);
+    votingTimer = null;
+  }
+  votingEndsAt = null;
   timerProgress.style.strokeDashoffset = 0;
   timerText.textContent = '30';
   turnTimerEl.classList.add('hidden');
@@ -1238,6 +1289,8 @@ if (currentPlayerObj && currentPlayerObj.connected === false) {
           
           stopTurnTimerAnimation();
           stopImpostorGuessTimerAnimation();
+                    stopVotingTimerAnimation();
+
           isEjectedImpostor = false;
           
           twoImpostorsMode = d.twoImpostorsMode || false;
@@ -1304,8 +1357,16 @@ if (currentPlayerObj && currentPlayerObj.connected === false) {
             }
           }
           console.log('Voting UI created successfully');
+                    console.log('Voting UI created successfully');
           console.log('========== END startVoting ==========');
         }
+        
+        if (d.type === 'votingTimer') {
+          if (d.votingEndsAt) {
+            startVotingTimerAnimation(d.votingEndsAt);
+          }
+        }
+
                   
         
 
@@ -1836,6 +1897,7 @@ function updateVoteCountDisplay() {
   }
 }
 
+let voteSubmitTimer = null;
 window.vote = (v, btnElement) => {
   if (isSpectator) return;
   if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -1869,26 +1931,44 @@ window.vote = (v, btnElement) => {
     }
   } else {
     // Single vote mode - allow changing
+    // Clear any pending auto-submit
+    if (voteSubmitTimer) {
+      clearTimeout(voteSubmitTimer);
+      voteSubmitTimer = null;
+    }
+    
     if (btnElement.classList.contains('selected')) {
       // Deselect
       selectedVotes = [];
       btnElement.classList.remove('selected');
+      
+      // Re-enable all buttons
+      document.querySelectorAll('.vote-btn').forEach(b => {
+        b.style.pointerEvents = 'auto';
+        b.classList.remove('selected');
+      });
     } else {
       // Select (clear previous selection)
-      document.querySelectorAll('.vote-btn').forEach(b => b.classList.remove('selected'));
+      document.querySelectorAll('.vote-btn').forEach(b => {
+        b.classList.remove('selected');
+        b.style.pointerEvents = 'auto';
+      });
+      
       selectedVotes = [v];
       btnElement.classList.add('selected');
       
-      // Auto-submit after 1 second
-      setTimeout(() => {
-        if (selectedVotes.includes(v)) {
+      // Auto-submit after 1.5 seconds (gives time to change)
+      voteSubmitTimer = setTimeout(() => {
+        if (selectedVotes.includes(v) && ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'vote', vote: v }));
           document.querySelectorAll('.vote-btn').forEach(b => b.style.pointerEvents = 'none');
+          voteSubmitTimer = null;
         }
-      }, 1000);
+      }, 1500);
     }
   }
 };
+
 
 function submitVotes() {
   if (hasSubmittedVotes || selectedVotes.length === 0) return;
@@ -1945,17 +2025,22 @@ window.clearVotes = () => {
   selectedVotes = [];
   hasSubmittedVotes = false;
   
+  // Clear auto-submit timer
+  if (voteSubmitTimer) {
+    clearTimeout(voteSubmitTimer);
+    voteSubmitTimer = null;
+  }
+  
   const buttons = document.querySelectorAll('.vote-btn');
   buttons.forEach(b => {
-    b.style.background = '';
-    b.style.color = '';
-    b.style.fontWeight = '';
+    b.classList.remove('selected');
     b.style.opacity = '1';
     b.style.pointerEvents = 'auto';
   });
   
   updateVoteCountDisplay();
 };
+
 
 function submitImpostorGuess() {
   if (!input.value.trim() || !isEjectedImpostor) return;
