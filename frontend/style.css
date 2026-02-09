@@ -288,8 +288,10 @@ body {
   color: #6a8bff;
   margin-bottom: 0px;
   flex-shrink: 0;
-  padding-right: 4px;
+  min-width: 60px;
+  text-align: center;
 }
+
 
 
 .lobby-host {
@@ -940,20 +942,23 @@ input:disabled {
 .lobby-code-wrapper {
   position: relative;
   display: inline-block;
+  padding-right: 8px;
   margin-right: 6px;
 }
+
 
 /* Stacked badges container */
 .lobby-badges-stack {
   position: absolute;
-  top: -2px;
-  right: -6px;
+  top: -4px;
+  right: 0px;
   display: flex;
   flex-direction: column;
   gap: 0.5px;
   pointer-events: none;
   z-index: 1;
 }
+
 
 /* Individual stacked badge */
 .stacked-badge {
