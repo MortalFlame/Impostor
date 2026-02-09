@@ -35,15 +35,17 @@ body {
   justify-content: space-between;
   align-items: center;
   height: 100%;
+  gap: 8px;
 }
 
 .lobby-info {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex: 1;
   min-width: 0;
 }
+
 
 .lobby-code-container {
   display: flex;
@@ -85,15 +87,20 @@ body {
   gap: 6px;
   font-size: 12px;
   min-width: 0;
-  flex-shrink: 0;
+  flex: 0 0 auto;
 }
+
 
 .game-mode-badges {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
   flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
 }
+
 
 .header-badge {
   display: flex;
@@ -269,9 +276,10 @@ body {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   text-transform: capitalize;
 }
+
 
 .lobby-code {
   font-family: monospace;
@@ -280,7 +288,9 @@ body {
   color: #6a8bff;
   margin-bottom: 0px;
   flex-shrink: 0;
+  padding-right: 4px;
 }
+
 
 .lobby-host {
   display: flex;
@@ -930,31 +940,36 @@ input:disabled {
 .lobby-code-wrapper {
   position: relative;
   display: inline-block;
+  margin-right: 6px;
 }
 
 /* Stacked badges container */
 .lobby-badges-stack {
   position: absolute;
-  top: -3px;
-  right: -8px;
+  top: -2px;
+  right: -6px;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 0.5px;
   pointer-events: none;
+  z-index: 1;
 }
 
 /* Individual stacked badge */
 .stacked-badge {
-  font-size: 10px;
+  font-size: 8px;
   line-height: 1;
-  background: rgba(13, 17, 28, 0.9);
-  border-radius: 4px;
-  padding: 2px;
+  background: rgba(13, 17, 28, 0.95);
+  border-radius: 3px;
+  padding: 1.5px 2px;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  min-width: 12px;
+  min-height: 12px;
 }
+
 
 .stacked-badge.two-impostors {
   color: #9b59b6;
