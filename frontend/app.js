@@ -289,8 +289,9 @@ function stopTurnTimerAnimation() {
   timerProgress.style.strokeDashoffset = 0;
   timerText.textContent = '30';
   turnTimerEl.classList.add('hidden');
-  isMyTurn = false;
+  // Don't modify isMyTurn here - it should only be set by game state
 }
+
 
 function startImpostorGuessTimerAnimation(guessEndsAt) {
   stopImpostorGuessTimerAnimation();
