@@ -12,7 +12,7 @@
   <link rel="preload" as="image" href="images/impostor-bg.webp" fetchpriority="high">
   <link rel="preload" as="image" href="images/civilian-bg.JPG" fetchpriority="high">
   <link rel="preload" as="image" href="images/impostor-bg.JPG" fetchpriority="high">
-    
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>  
 </head>
 <body>
   <div id="gameHeader" class="game-header hidden">
@@ -22,6 +22,15 @@
           <span id="lobbyCodeDisplay" class="lobby-code">----</span>
           <span id="playerNameDisplay" class="player-name-display"></span>
         </div>
+        <div class="game-mode-badges" id="headerGameModeBadges">
+          <span class="header-badge impostor-badge" id="headerImpostorBadge">
+            <span class="badge-icon">🎭</span>
+            <span id="headerImpostorText">1</span>
+          </span>
+          <span class="header-badge guess-badge hidden" id="headerGuessBadge">
+            <span class="badge-icon">🔍</span>
+          </span>
+        </div>
         <div class="connection-status">
           <span class="status-dot" id="connectionDot"></span>
           <span id="connectionText">Connecting...</span>
@@ -30,17 +39,7 @@
     </div>
   </div>
   
-  <!-- Game Mode Indicator (shown during active game) -->
-<div id="gameModeIndicator" class="game-mode-indicator hidden">
-  <div class="mode-badge impostor-count">
-    <span class="mode-icon">🎭</span>
-    <span id="impostorCountText">2 Impostors</span>
-  </div>
-  <div id="guessWordBadge" class="mode-badge guess-word hidden">
-    <span class="mode-icon">🔍</span>
-    <span>Guess Word</span>
-  </div>
-</div>
+
 
   <!-- Floating exit button (outside header) -->
   <button id="exitLobby" class="floating-exit" style="display:none;">X</button>
