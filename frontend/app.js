@@ -421,10 +421,19 @@ function updateLobbyList(lobbies) {
     lobbies.forEach(lobby => {
       const totalPlayers = lobby.playerCount + lobby.spectatorCount;
       const playerStatus = `${lobby.playerCount}`;
-      const impostorGuessBadge = lobby.impostorGuessOption ? 
-        '<span class="impostor-guess-badge" title="Impostor gets last chance to guess">🔍</span>' : '';
-      const twoImpostorsBadge = lobby.twoImpostorsOption ?
-        '<span class="two-impostors-badge" title="2 Impostors Mode">👥</span>' : '';
+      
+      // Build stacked badges HTML
+      let badgesHtml = '';
+      if (lobby.twoImpostorsOption || lobby.impostorGuessOption) {
+        badgesHtml = '<div class="lobby-badges-stack">';
+        if (lobby.twoImpostorsOption) {
+          badgesHtml += '<span class="stacked-badge two-impostors" title="2 Impostors Mode">👥</span>';
+        }
+        if (lobby.impostorGuessOption) {
+          badgesHtml += '<span class="stacked-badge guess-word" title="Guess Word Mode">🔍</span>';
+        }
+        badgesHtml += '</div>';
+      }
       
       let phaseIndicator = '';
       if (lobby.phase === 'lobby') {
@@ -438,7 +447,10 @@ function updateLobbyList(lobbies) {
       lobbiesHtml += `
         <div class="lobby-item" data-lobby-id="${lobby.id}">
           <div class="lobby-info">
-            <div class="lobby-code">${lobby.id} ${impostorGuessBadge} ${twoImpostorsBadge}</div>
+            <div class="lobby-code-wrapper">
+              <div class="lobby-code">${lobby.id}</div>
+              ${badgesHtml}
+            </div>
             <div class="lobby-host">
               <span class="host-name" title="${lobby.host}">${lobby.host}</span>
             </div>
@@ -991,13 +1003,13 @@ function connect() {
 
         if (d.type === 'lobbyUpdate') {
           updatePlayerList(d.players, d.spectators);
-          // Update impostor count in game mode indicator if game is active
+          // Update impostor count in header if game is active
           if (!gameCard.classList.contains('hidden')) {
-            const impostorCountText = document.getElementById('impostorCountText');
-            if (impostorCountText && d.players) {
+            const headerImpostorText = document.getElementById('headerImpostorText');
+            if (headerImpostorText && d.players) {
               const activeImpostors = d.players.filter(p => p.role === 'impostor' && p.connected).length;
               if (activeImpostors > 0) {
-                impostorCountText.textContent = activeImpostors === 1 ? '1 Impostor' : `${activeImpostors} Impostors`;
+                headerImpostorText.textContent = activeImpostors;
               }
             }
           }
@@ -1039,26 +1051,22 @@ function connect() {
           lobbyCard.classList.add('hidden');
           gameCard.classList.remove('hidden');
           
-          // Show game mode indicator
-          const gameModeIndicator = document.getElementById('gameModeIndicator');
-          const impostorCountText = document.getElementById('impostorCountText');
-          const guessWordBadge = document.getElementById('guessWordBadge');
+          // Update header game mode badges
+          const headerImpostorBadge = document.getElementById('headerImpostorBadge');
+          const headerImpostorText = document.getElementById('headerImpostorText');
+          const headerGuessBadge = document.getElementById('headerGuessBadge');
           
-          if (gameModeIndicator && impostorCountText) {
-            // Set impostor count
+          if (headerImpostorBadge && headerImpostorText) {
             const impostorCount = d.twoImpostorsMode ? 2 : 1;
-            impostorCountText.textContent = impostorCount === 1 ? '1 Impostor' : '2 Impostors';
+            headerImpostorText.textContent = impostorCount;
             
-            // Show/hide guess word badge
-            if (guessWordBadge) {
+            if (headerGuessBadge) {
               if (d.impostorGuessOption || impostorGuessOption) {
-                guessWordBadge.classList.remove('hidden');
+                headerGuessBadge.classList.remove('hidden');
               } else {
-                guessWordBadge.classList.add('hidden');
+                headerGuessBadge.classList.add('hidden');
               }
             }
-            gameModeIndicator.classList.remove('hidden');
-            document.body.classList.add('game-mode-active');
           }
           
           exitLobbyBtn.style.display = 'block';
@@ -1347,15 +1355,8 @@ if (currentPlayerObj && currentPlayerObj.connected === false) {
           results.innerHTML = '';
         }
 
-        if (d.type === 'gameEndEarly') {
+if (d.type === 'gameEndEarly') {
         stopTurnTimerAnimation();
-          
-          // Hide game mode indicator
-          const gameModeIndicator = document.getElementById('gameModeIndicator');
-          if (gameModeIndicator) {
-            gameModeIndicator.classList.add('hidden');
-            document.body.classList.remove('game-mode-active');
-          }
           
         stopImpostorGuessTimerAnimation();
 
@@ -1486,6 +1487,24 @@ if (currentPlayerObj && currentPlayerObj.connected === false) {
             winnerColor = '#f39c12';
           } else {
             winnerColor = '#95a5a6';
+          }
+
+          // ADD CONFETTI HERE
+          if (!isSpectator && d.winner !== 'Draw' && d.winner !== 'Game Ended Early') {
+            const myRoleInfo = d.roles.find(r => r.name === myPlayerName);
+            if (myRoleInfo) {
+              const iWon = (myRoleInfo.role === 'civilian' && d.winner === 'Civilians') ||
+                          (myRoleInfo.role === 'impostor' && (d.winner === 'Impostors' || d.winner === 'Impostor'));
+              
+              if (iWon) {
+                // Trigger confetti
+                confetti({
+                  particleCount: 100,
+                  spread: 70,
+                  origin: { y: 0.6 }
+                });
+              }
+            }
           }
           
           // FIX: Preserve spectator join state from server
@@ -1815,51 +1834,40 @@ window.vote = (v, btnElement) => {
     const index = selectedVotes.indexOf(v);
     
     if (index === -1) {
-      if (selectedVotes.length < 2) {
+      if (selectedVotes.length < targetVoteCount) {
         selectedVotes.push(v);
-        btnElement.style.background = '#fff';
-        btnElement.style.color = '#000';
-        btnElement.style.fontWeight = 'bold';
-      } else {
-        const firstVote = selectedVotes[0];
-        const firstButton = document.querySelector(`.vote-btn:contains('${firstVote}')`);
-        if (firstButton) {
-          firstButton.style.background = '';
-          firstButton.style.color = '';
-          firstButton.style.fontWeight = '';
-        }
-        selectedVotes.shift();
-        selectedVotes.push(v);
-        btnElement.style.background = '#fff';
-        btnElement.style.color = '#000';
-        btnElement.style.fontWeight = 'bold';
+        btnElement.classList.add('selected');
       }
     } else {
       selectedVotes.splice(index, 1);
-      btnElement.style.background = '';
-      btnElement.style.color = '';
-      btnElement.style.fontWeight = '';
+      btnElement.classList.remove('selected');
     }
     
     updateVoteCountDisplay();
     
-    if (selectedVotes.length === 2 && !hasSubmittedVotes) {
+    if (selectedVotes.length === targetVoteCount) {
       submitVotes();
     }
   } else {
-    ws.send(JSON.stringify({ type: 'vote', vote: v }));
-    
-    const buttons = document.querySelectorAll('.vote-btn');
-    buttons.forEach(b => {
-      if (b === btnElement) {
-        b.style.background = '#fff';
-        b.style.color = '#000';
-        b.style.fontWeight = 'bold';
-      } else {
-        b.style.opacity = '0.3';
-        b.style.pointerEvents = 'none';
-      }
-    });
+    // Single vote mode - allow changing
+    if (btnElement.classList.contains('selected')) {
+      // Deselect
+      selectedVotes = [];
+      btnElement.classList.remove('selected');
+    } else {
+      // Select (clear previous selection)
+      document.querySelectorAll('.vote-btn').forEach(b => b.classList.remove('selected'));
+      selectedVotes = [v];
+      btnElement.classList.add('selected');
+      
+      // Auto-submit after 1 second
+      setTimeout(() => {
+        if (selectedVotes.includes(v)) {
+          ws.send(JSON.stringify({ type: 'vote', vote: v }));
+          document.querySelectorAll('.vote-btn').forEach(b => b.style.pointerEvents = 'none');
+        }
+      }, 1000);
+    }
   }
 };
 
