@@ -1088,7 +1088,9 @@ function connect() {
           impostorGuessOption = d.impostorGuessOption || false;
           twoImpostorsOption = d.twoImpostorsOption || false;
           
-          start.disabled = isSpectator || d.players.length < 3 || !isOwnerCheck;
+         // Validate minimum players based on game mode
+          const minPlayersForMode = twoImpostorsOption ? 5 : 3;
+          start.disabled = isSpectator || d.players.length < minPlayersForMode || !isOwnerCheck;
           
           spectate.style.display = isSpectator ? 'none' : 'block';
           join.style.display = isSpectator ? 'none' : 'block';
@@ -1352,12 +1354,14 @@ if (currentPlayerObj && currentPlayerObj.connected === false) {
             
             if (activeImpostorCount >= 2) {
               voting.innerHTML += `
-  <button id="submitVotesBtn" class="button-base" style="margin-top: 10px; background: linear-gradient(135deg, #27ae60, #2ecc71);" onclick="submitVotes()">
-                  Submit Votes
-                </button>
-                <button id="clearVotesBtn" class="button-base" style="margin-top: 5px; background: linear-gradient(135deg, #e74c3c, #c0392b);" onclick="clearVotes()">
-                  Clear Selection
-                </button>
+                <div style="display: flex; gap: 8px; margin-top: 10px;">
+                  <button id="submitVotesBtn" class="button-base" style="flex: 2; background: linear-gradient(135deg, #27ae60, #2ecc71);" onclick="submitVotes()">
+                    Submit Votes
+                  </button>
+                  <button id="clearVotesBtn" class="button-base" style="flex: 1; background: linear-gradient(135deg, #e74c3c, #c0392b);" onclick="clearVotes()">
+                    Clear
+                  </button>
+                </div>
               `;
             }
           }
@@ -1536,12 +1540,17 @@ if (d.type === 'gameEndEarly') {
               restart.disabled = false;
               restart.style.opacity = '1';
             }
+            // Call updateGameOptions for spectators in results
+            updateGameOptions();
           } else if (myRoleInfo) {
             restart.classList.remove('hidden');
             restart.innerText = 'Restart Game';
             restart.disabled = false;
             restart.style.opacity = '1';
             hasClickedRestart = false;
+            // Call updateGameOptions for players in results
+            if (isOwner) {
+              updateGameOptions();
           } else {
             restart.classList.remove('hidden');
             restart.innerText = 'Join Next Game';
@@ -1751,12 +1760,17 @@ if (d.type === 'gameEndEarly') {
               restart.disabled = false;
               restart.style.opacity = '1';
             }
+            // Call updateGameOptions for spectators in results
+            updateGameOptions();
           } else if (myRoleInfo) {
             restart.classList.remove('hidden');
             restart.innerText = 'Restart Game';
             restart.disabled = false;
             restart.style.opacity = '1';
             hasClickedRestart = false;
+            // Call updateGameOptions for players in results
+            if (isOwner) {
+              updateGameOptions();
           } else {
             restart.classList.remove('hidden');
             restart.innerText = 'Join Next Game';
@@ -2146,8 +2160,37 @@ function updateGameOptions() {
     return;
   }
   
-  // Show container for players
-  gameOptionsContainer.style.display = 'flex';
+  // Determine current phase
+  const isInLobby = lobbyCard && !lobbyCard.classList.contains('hidden');
+  const isInResults = !isInLobby && restart && !restart.classList.contains('hidden');
+  
+  // Show container only in lobby or results phase
+  if (isInLobby || isInResults) {
+    gameOptionsContainer.style.display = 'flex';
+  } else {
+    gameOptionsContainer.style.display = 'none';
+    return;
+  }
+  
+  // Count current players (players in lobby + spectators wanting to join)
+  const playerItems = document.querySelectorAll('.player-item:not(.spectator-item)');
+  const currentPlayerCount = playerItems.length;
+  
+  // Count spectators wanting to join (only during results)
+  let spectatorsWantingCount = 0;
+  if (isInResults) {
+    const spectatorItems = document.querySelectorAll('.spectator-item');
+    spectatorItems.forEach(item => {
+      // Check if this spectator wants to join (you could mark this in DOM or track separately)
+      // For now, we'll use the global spectatorWantsToJoin flag if viewing as spectator
+      if (spectatorWantsToJoin) {
+        spectatorsWantingCount = 1;
+      }
+    });
+  }
+  
+  const totalPlayers = currentPlayerCount + spectatorsWantingCount;
+  const hasEnoughForTwoImpostors = totalPlayers >= 5;
   
   // Update Two Impostors toggle
   const twoImpostorsCheckbox = twoImpostorsToggle.querySelector('input[type="checkbox"]');
@@ -2155,9 +2198,12 @@ function updateGameOptions() {
   
   if (twoImpostorsCheckbox && twoImpostorsLabel) {
     twoImpostorsCheckbox.checked = twoImpostorsOption;
-    twoImpostorsCheckbox.disabled = !isOwner;
     
-    if (isOwner) {
+    // Disable if not owner OR not enough players
+    const canToggle = isOwner && hasEnoughForTwoImpostors;
+    twoImpostorsCheckbox.disabled = !canToggle;
+    
+    if (canToggle) {
       twoImpostorsLabel.style.color = '#fff';
       twoImpostorsLabel.style.cursor = 'pointer';
       twoImpostorsCheckbox.style.cursor = 'pointer';
@@ -2205,7 +2251,7 @@ const tooltipData = {
     • Both impostors voted out = Civilians win<br>
     • No impostors voted out = Impostors win<br>
     • One voted out = Draw<br><br>
-    <em>Requires 4+ players.</em>
+    <em>Requires 5+ players.</em>
   `,
   impostorGuess: `
     <strong>Impostor Guess Word</strong><br><br>
@@ -2471,4 +2517,3 @@ if (document.readyState === 'loading') {
   // DOM already loaded, run immediately
   initializeGame();
 }
-
