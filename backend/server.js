@@ -2451,7 +2451,6 @@ const spectatorsWantingToJoin = lobby.spectatorsWantingToJoin.filter(id => {
 });
         
         // Check if there are disconnected players from previous game still within grace period
-const now = Date.now();
 const disconnectedPlayersRemaining = playersWithRoles.filter(p => 
   p.ws?.readyState !== 1 && 
   !p.removed && 
