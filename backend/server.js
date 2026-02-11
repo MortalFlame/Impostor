@@ -2582,18 +2582,6 @@ if (disconnectedPlayersRemaining.length > 0) {
       }
     }
       
-      // FIX: Proper connection epoch check
-     // if (player.connectionEpoch && ws.connectionEpoch !== player.connectionEpoch) {
-       // console.log(`Ignoring close from stale socket for player ${player.name} (epoch mismatch)`);
-        //return;
-      //}
-      
-      // Only mark as disconnected if not manually removed
-      if (!player.removed) {
-        player.lastDisconnectTime = Date.now();
-        console.log(`DISCONNECT: ${player.name} disconnected at ${player.lastDisconnectTime}, phase: ${lobby.phase}`); // ← ADD THIS
-      }
-      
       const wasGameInProgress = (lobby.phase !== 'lobby' && lobby.phase !== 'results' && lobby.phase !== 'impostorGuess');
       
       if (wasGameInProgress) {
