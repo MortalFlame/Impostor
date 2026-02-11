@@ -1366,7 +1366,6 @@ if (currentPlayerObj && currentPlayerObj.connected === false) {
             }
           }
           console.log('Voting UI created successfully');
-                    console.log('Voting UI created successfully');
           console.log('========== END startVoting ==========');
         }
                 if (d.type === 'allVoted') {
