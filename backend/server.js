@@ -2306,9 +2306,12 @@ console.log(`Round2 starting with ${lobby.expectedSubmissions} expected submissi
             return;
           }
           
-          const validVotes = msg.vote.filter(v => 
-            v && v !== player.name && lobby.players.some(p => p.name === v)
-          );
+          // Line 2309-2311
+
+const validVotes = msg.vote.filter(v => 
+  v && v !== player.name && playersInGame.some(p => p.name === v)  // ✅ Only valid targets
+);
+
           
           if (validVotes.length !== expectedVoteCount) {
             console.log(`Invalid vote count`);
