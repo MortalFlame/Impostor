@@ -1065,11 +1065,11 @@ function skipCurrentPlayer(lobby, isTimeout = false) {
             const activeImpostorCount = activeImpostors.length;
             
             broadcast(lobby, {
-              type: 'startVoting',
-              players: lobby.players.map(p => p.name),
-              twoImpostorsMode: lobby.twoImpostorsOption || false,
-              activeImpostorCount: activeImpostorCount
-            });
+  type: 'startVoting',
+  players: playersInGame.map(p => p.name),  // ✅ Only players still in the game
+  twoImpostorsMode: lobby.twoImpostorsOption || false,
+  activeImpostorCount: activeImpostorCount
+});
             
             // Start voting timer
             startVotingTimer(lobby, lobbyId);
@@ -2245,11 +2245,11 @@ console.log(`Round2 starting with ${lobby.expectedSubmissions} expected submissi
               
               console.log(`Broadcasting startVoting with ${activeImpostorCount} active impostors`);
               broadcast(lobby, {
-                type: 'startVoting',
-                players: lobby.players.map(p => p.name),
-                twoImpostorsMode: lobby.twoImpostorsOption || false,
-                activeImpostorCount: activeImpostorCount
-              });
+  type: 'startVoting',
+  players: playersInGame.map(p => p.name),  // ✅ Only players still in the game
+  twoImpostorsMode: lobby.twoImpostorsOption || false,
+  activeImpostorCount: activeImpostorCount
+});
               // Start voting timer
               startVotingTimer(lobby, lobbyId);
             } catch (err) {
