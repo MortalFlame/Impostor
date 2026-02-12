@@ -1351,11 +1351,11 @@ if (isSpectator && d.wantsToJoinNextGame !== undefined) {
             
             if (activeImpostorCount >= 2) {
               voting.innerHTML += `
-                <div style="display: flex; gap: 8px; margin-top: 10px;">
-                  <button id="submitVotesBtn" class="button-base" style="flex: 2; background: linear-gradient(135deg, #27ae60, #2ecc71);" onclick="submitVotes()">
+                <div class="voting-action-row">
+                <button id="submitVotesBtn" class="button-base vote-submit" onclick="submitVotes()">
                     Submit Votes
                   </button>
-                  <button id="clearVotesBtn" class="button-base" style="flex: 1; background: linear-gradient(135deg, #e74c3c, #c0392b);" onclick="clearVotes()">
+                  <button id="clearVotesBtn" class="button-base vote-clear" onclick="clearVotes()">
                     Clear
                   </button>
                 </div>
