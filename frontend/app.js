@@ -1167,6 +1167,7 @@ function connect() {
           results.innerHTML = ''; 
           restart.classList.add('hidden');
           restart.style.opacity = '1';
+          updateGameOptions();
           
           if (isSpectator || d.role === 'spectator') {
             // Always update spectator join state from server when game starts
