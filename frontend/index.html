@@ -12,7 +12,7 @@
   <link rel="preload" as="image" href="images/impostor-bg.webp" fetchpriority="high">
   <link rel="preload" as="image" href="images/civilian-bg.JPG" fetchpriority="high">
   <link rel="preload" as="image" href="images/impostor-bg.JPG" fetchpriority="high">
-    
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>  
 </head>
 <body>
   <div id="gameHeader" class="game-header hidden">
@@ -22,6 +22,15 @@
           <span id="lobbyCodeDisplay" class="lobby-code">----</span>
           <span id="playerNameDisplay" class="player-name-display"></span>
         </div>
+        <div class="game-mode-badges" id="headerGameModeBadges">
+          <span class="header-badge impostor-badge" id="headerImpostorBadge">
+            <span class="badge-icon">🎭</span>
+            <span id="headerImpostorText">1</span>
+          </span>
+          <span class="header-badge guess-badge hidden" id="headerGuessBadge">
+            <span class="badge-icon">🔍</span>
+          </span>
+        </div>
         <div class="connection-status">
           <span class="status-dot" id="connectionDot"></span>
           <span id="connectionText">Connecting...</span>
@@ -29,6 +38,8 @@
       </div>
     </div>
   </div>
+  
+
 
   <!-- Floating exit button (outside header) -->
   <button id="exitLobby" class="floating-exit" style="display:none;">X</button>
@@ -47,9 +58,39 @@
           <span class="spectate-icon">👁️</span>
         </button>
       </div>
+
+      
       <button id="start" class="button-base" disabled>Start Game</button>
 
       <div id="players" class="players"></div>
+      
+      <div id="gameOptionsContainer" style="display: none;">
+        <div class="game-options-row">
+          <div id="twoImpostorsToggle" class="game-option-toggle">
+            <label class="toggle-label">
+              <span class="switch">
+                <input type="checkbox" id="twoImpostorsCheckbox" onchange="toggleTwoImpostorsOption()">
+                <span class="slider"></span>
+              </span>
+              <span class="toggle-text">2 Impostors</span>
+              <span class="info-icon prevent-toggle" data-info="twoImpostors">ⓘ</span>
+            </label>
+          </div>
+          
+          <div class="toggle-separator">|</div>
+          
+          <div id="impostorGuessToggle" class="game-option-toggle">
+            <label class="toggle-label">
+              <span class="switch">
+                <input type="checkbox" id="impostorGuessCheckbox" onchange="toggleImpostorGuessOption()">
+                <span class="slider"></span>
+              </span>
+              <span class="toggle-text">Guess Word</span>
+              <span class="info-icon prevent-toggle" data-info="impostorGuess">ⓘ</span>
+            </label>
+          </div>
+        </div>
+      </div>
       
       <!-- Lobby List Container -->
       <div id="lobbyListContainer" class="lobby-list-container">
@@ -100,8 +141,10 @@
       <div id="results"></div>
 
       <button id="restart" class="button-base hidden">Restart Game</button>
+
     </div>
   </div>
+<div id="infoTooltip" class="custom-tooltip"></div>
 
   <script src="app.js"></script>
 </body>

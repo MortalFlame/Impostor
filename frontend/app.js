@@ -33,7 +33,6 @@ const voting = document.getElementById('voting');
 const results = document.getElementById('results');
 const restart = document.getElementById('restart');
 
-// Function to update join button text based on lobby input
 function updateJoinButtonText() {
   const lobbyInput = document.getElementById('lobbyId');
   const joinButton = document.getElementById('join');
@@ -47,7 +46,6 @@ function updateJoinButtonText() {
   }
 }
 
-// Add event listeners for the lobby input
 document.addEventListener('DOMContentLoaded', () => {
   const lobbyInput = document.getElementById('lobbyId');
   if (lobbyInput) {
@@ -55,7 +53,6 @@ document.addEventListener('DOMContentLoaded', () => {
     lobbyInput.addEventListener('change', updateJoinButtonText);
     lobbyInput.addEventListener('keyup', updateJoinButtonText);
     
-    // Initial update
     setTimeout(updateJoinButtonText, 100);
   }
 });
@@ -75,6 +72,8 @@ let reconnectDelay = 2000;
 let hasShownConnectionWarning = false;
 let hasClickedRestart = false;
 let turnTimer = null;
+let currentPlayerCount = 0;
+let currentSpectatorsWantingCount = 0;
 let currentTurnTime = 30;
 let spectatorWantsToJoin = false;
 let myPlayerName = '';
@@ -85,23 +84,33 @@ let connectionLatency = 0;
 let connectionStable = true;
 let connectionState = 'disconnected';
 
-// Timer animation variables
 let timerAnimationFrame = null;
 let currentTurnEndsAt = null;
 let isMyTurn = false;
 
-// Reconnection timers
 let reconnectTimer = null;
 let connectTimeout = null;
 let visibilityReconnectTimer = null;
 
-// Server restart detection
 let lastServerId = localStorage.getItem('lastServerId');
 
-// Lobby list auto-refresh
 let lobbyListRefreshInterval = null;
 
-const DEBUG_MODE = false;
+let impostorGuessTimer = null;
+let impostorGuessEndsAt = null;
+let votingTimer = null;
+let votingEndsAt = null;
+let isImpostor = false;
+let isEjectedImpostor = false;
+let isOwner = false;
+let impostorGuessOption = false;
+let twoImpostorsOption = false;
+let twoImpostorsMode = false;
+
+let selectedVotes = [];
+let hasSubmittedVotes = false;
+
+const DEBUG_MODE = true;
 
 function safeLog(...args) {
   if (DEBUG_MODE) {
@@ -112,6 +121,41 @@ function safeLog(...args) {
 function safeError(...args) {
   if (DEBUG_MODE) {
     console.error(...args);
+  }
+}
+
+function forceImmediateReconnect() {
+  safeLog('Forcing immediate reconnect...');
+  
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  
+  if (connectTimeout) {
+    clearTimeout(connectTimeout);
+    connectTimeout = null;
+  }
+  
+  if (ws) {
+    try {
+      ws.onopen = null;
+      ws.onclose = null;
+      ws.onerror = null;
+      ws.onmessage = null;
+      ws.close();
+    } catch (err) {
+    }
+    ws = null;
+  }
+  
+  reconnectDelay = 0;
+  connectionAttempts = 0;
+  
+  if (isSpectator && currentLobbyId) {
+    joinAsSpectator();
+  } else if (currentLobbyId) {
+    joinAsPlayer(true);
   }
 }
 
@@ -178,7 +222,6 @@ function showConnectionWarning(message) {
   }, 5000);
 }
 
-// Absolute-time timer functions
 function getRemainingTimeMs() {
   if (!currentTurnEndsAt) return 0;
   const now = Date.now();
@@ -210,36 +253,32 @@ function startTurnTimerAnimation(turnEndsAt) {
   }
   
   turnTimerEl.classList.remove('hidden');
+  console.log('Timer animation started for turn ending at:', turnEndsAt, 'isMyTurn:', isMyTurn);
   
   function animateTimer() {
     const remainingMs = getRemainingTimeMs();
     const timeLeftSeconds = Math.ceil(remainingMs / 1000);
     
     if (remainingMs <= 0) {
-      // Time's up
       stopTurnTimerAnimation();
       turnTimerEl.classList.add('hidden');
       turnEl.textContent = 'Time expired! Waiting for next player...';
       return;
     }
     
-    // Update circular timer
     const circumference = 2 * Math.PI * 18;
-    const totalDuration = 30000; // Fixed 30-second turns
+    const totalDuration = 30000;
     const progress = (remainingMs / totalDuration) * 100;
     const offset = circumference - (progress / 100) * circumference;
     
     updateTimerColor(timeLeftSeconds);
     timerProgress.style.strokeDashoffset = offset;
     
-    // Update timer text
     timerText.textContent = timeLeftSeconds;
     
-    // Continue animation
     timerAnimationFrame = requestAnimationFrame(animateTimer);
   }
   
-  // Start animation
   timerAnimationFrame = requestAnimationFrame(animateTimer);
 }
 
@@ -249,11 +288,110 @@ function stopTurnTimerAnimation() {
     timerAnimationFrame = null;
   }
   currentTurnEndsAt = null;
+  timerProgress.style.strokeDashoffset = 0;
+  timerText.textContent = '30';
+  turnTimerEl.classList.add('hidden');
+  // Don't modify isMyTurn here - it should only be set by game state
+}
+
+
+function startImpostorGuessTimerAnimation(guessEndsAt) {
+  stopImpostorGuessTimerAnimation();
+  
+  impostorGuessEndsAt = guessEndsAt;
+  
+  if (!isImpostor) {
+    turnTimerEl.classList.add('hidden');
+    return;
+  }
+  
+  turnTimerEl.classList.remove('hidden');
+  
+  function animateImpostorGuessTimer() {
+    const remainingMs = Math.max(0, impostorGuessEndsAt - Date.now());
+    const timeLeftSeconds = Math.ceil(remainingMs / 1000);
+    
+    if (remainingMs <= 0) {
+      stopImpostorGuessTimerAnimation();
+      turnTimerEl.classList.add('hidden');
+      turnEl.textContent = 'Time expired! Impostor failed to guess.';
+      return;
+    }
+    
+    const circumference = 2 * Math.PI * 18;
+    const totalDuration = 30000;
+    const progress = (remainingMs / totalDuration) * 100;
+    const offset = circumference - (progress / 100) * circumference;
+    
+    updateTimerColor(timeLeftSeconds);
+    timerProgress.style.strokeDashoffset = offset;
+    
+    timerText.textContent = timeLeftSeconds;
+    
+    impostorGuessTimer = requestAnimationFrame(animateImpostorGuessTimer);
+  }
+  
+  impostorGuessTimer = requestAnimationFrame(animateImpostorGuessTimer);
+}
+
+function stopImpostorGuessTimerAnimation() {
+  if (impostorGuessTimer) {
+    cancelAnimationFrame(impostorGuessTimer);
+    impostorGuessTimer = null;
+  }
+  impostorGuessEndsAt = null;
+  timerProgress.style.strokeDashoffset = 0;
+  timerText.textContent = '30';
   turnTimerEl.classList.add('hidden');
 }
 
-function stopTurnTimer() {
-  stopTurnTimerAnimation();
+function startVotingTimerAnimation(endsAt) {
+  stopVotingTimerAnimation();
+  
+  votingEndsAt = endsAt;
+  
+  if (isSpectator) {
+    turnTimerEl.classList.add('hidden');
+    return;
+  }
+  
+  turnTimerEl.classList.remove('hidden');
+  
+  function animateVotingTimer() {
+    const remainingMs = Math.max(0, votingEndsAt - Date.now());
+    const timeLeftSeconds = Math.ceil(remainingMs / 1000);
+    
+    if (remainingMs <= 0) {
+      stopVotingTimerAnimation();
+      turnTimerEl.classList.add('hidden');
+      return;
+    }
+    
+    const circumference = 2 * Math.PI * 18;
+    const totalDuration = 30000;
+    const progress = (remainingMs / totalDuration) * 100;
+    const offset = circumference - (progress / 100) * circumference;
+    
+    updateTimerColor(timeLeftSeconds);
+    timerProgress.style.strokeDashoffset = offset;
+    
+    timerText.textContent = timeLeftSeconds;
+    
+    votingTimer = requestAnimationFrame(animateVotingTimer);
+  }
+  
+  votingTimer = requestAnimationFrame(animateVotingTimer);
+}
+
+function stopVotingTimerAnimation() {
+  if (votingTimer) {
+    cancelAnimationFrame(votingTimer);
+    votingTimer = null;
+  }
+  votingEndsAt = null;
+  timerProgress.style.strokeDashoffset = 0;
+  timerText.textContent = '30';
+  turnTimerEl.classList.add('hidden');
 }
 
 function updatePlayerList(playersData, spectatorsData = []) {
@@ -268,11 +406,13 @@ function updatePlayerList(playersData, spectatorsData = []) {
       const statusClass = isConnected ? 'player-connected' : 'player-disconnected';
       const isMe = player.name === myPlayerName;
       const nameDisplay = isMe ? `<strong>${player.name}</strong>` : player.name;
+      const roleBadge = player.role ? `<span class="role-badge role-${player.role}">${player.role.charAt(0).toUpperCase()}</span>` : '';
       
       playersHtml += `
         <div class="player-item">
           <span class="player-status-dot ${statusClass}"></span>
           <span class="player-name" title="${player.name}">${nameDisplay}</span>
+          ${roleBadge}
         </div>
       `;
     });
@@ -310,12 +450,10 @@ function updateLobbyList(lobbies) {
   const lobbyListContainer = document.getElementById('lobbyListContainer');
   if (!lobbyListContainer) return;
   
-  // Ensure container is visible when we're browsing lobbies
   if (lobbyCard && !lobbyCard.classList.contains('hidden')) {
     lobbyListContainer.style.display = 'block';
   }
   
-  // Sort lobbies by creation date (newest first)
   lobbies.sort((a, b) => b.createdAt - a.createdAt);
   
   if (lobbies.length === 0) {
@@ -339,16 +477,41 @@ function updateLobbyList(lobbies) {
       const totalPlayers = lobby.playerCount + lobby.spectatorCount;
       const playerStatus = `${lobby.playerCount}`;
       
+      // Build stacked badges HTML
+      let badgesHtml = '';
+      if (lobby.twoImpostorsOption || lobby.impostorGuessOption) {
+        badgesHtml = '<div class="lobby-badges-stack">';
+        if (lobby.twoImpostorsOption) {
+          badgesHtml += '<span class="stacked-badge two-impostors" title="2 Impostors Mode">👥</span>';
+        }
+        if (lobby.impostorGuessOption) {
+          badgesHtml += '<span class="stacked-badge guess-word" title="Guess Word Mode">🔍</span>';
+        }
+        badgesHtml += '</div>';
+      }
+      
+      let phaseIndicator = '';
+      if (lobby.phase === 'lobby') {
+        phaseIndicator = '<span class="phase-indicator lobby-phase">Waiting</span>';
+      } else if (lobby.phase === 'results') {
+        phaseIndicator = '<span class="phase-indicator results-phase">Results</span>';
+      } else {
+        phaseIndicator = '<span class="phase-indicator in-game-phase">In Game</span>';
+      }
+      
       lobbiesHtml += `
         <div class="lobby-item" data-lobby-id="${lobby.id}">
           <div class="lobby-info">
-            <div class="lobby-code">${lobby.id}</div>
+            <div class="lobby-code-wrapper">
+              <div class="lobby-code">${lobby.id}</div>
+              ${badgesHtml}
+            </div>
             <div class="lobby-host">
-              
               <span class="host-name" title="${lobby.host}">${lobby.host}</span>
             </div>
             <div class="lobby-stats">
               <span class="player-count">P: ${playerStatus}</span>
+              ${phaseIndicator}
             </div>
           </div>
           <button class="join-lobby-btn" data-lobby-id="${lobby.id}">
@@ -361,7 +524,6 @@ function updateLobbyList(lobbies) {
     lobbiesHtml += '</div>';
     lobbyListContainer.innerHTML = lobbiesHtml;
     
-    // Add event listeners to join buttons
     document.querySelectorAll('.join-lobby-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const lobbyIdToJoin = e.target.getAttribute('data-lobby-id');
@@ -372,7 +534,6 @@ function updateLobbyList(lobbies) {
       });
     });
     
-    // Add event listener to refresh button
     const refreshBtn = document.getElementById('refreshLobbies');
     if (refreshBtn) {
       refreshBtn.addEventListener('click', () => {
@@ -382,40 +543,24 @@ function updateLobbyList(lobbies) {
   }
 }
 
-function getTimeAgo(timestamp) {
-  const now = Date.now();
-  const diff = now - timestamp;
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  
-  if (minutes < 1) return 'Just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  return 'Long ago';
-}
-
 function refreshLobbyList() {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'getLobbyList' }));
   }
 }
 
-// Auto-refresh lobby list every 5 seconds when on lobby screen
 function startLobbyListAutoRefresh() {
-  // Clear any existing interval first
   if (lobbyListRefreshInterval) {
     clearInterval(lobbyListRefreshInterval);
     lobbyListRefreshInterval = null;
   }
   
-  // Start a new interval that refreshes every 5 seconds
   lobbyListRefreshInterval = setInterval(() => {
-    // Only refresh if we're on the lobby screen (not in a game)
     if (lobbyCard && !lobbyCard.classList.contains('hidden') && 
         ws && ws.readyState === WebSocket.OPEN) {
       refreshLobbyList();
     }
-  }, 5000); // 5 seconds
+  }, 5000);
 }
 
 function stopLobbyListAutoRefresh() {
@@ -425,7 +570,6 @@ function stopLobbyListAutoRefresh() {
   }
 }
 
-// SINGLE visibility change handler (FIXED: removed duplicate)
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && currentTurnEndsAt && isMyTurn) {
     startTurnTimerAnimation(currentTurnEndsAt);
@@ -434,31 +578,37 @@ document.addEventListener('visibilitychange', () => {
     timerAnimationFrame = null;
   }
   
-  // Reconnection logic for visibility changes
-  safeLog('Page visible - checking connection');
+  if (!document.hidden && impostorGuessEndsAt && isImpostor) {
+    startImpostorGuessTimerAnimation(impostorGuessEndsAt);
+  } else if (document.hidden && impostorGuessTimer) {
+    cancelAnimationFrame(impostorGuessTimer);
+    impostorGuessTimer = null;
+  }
+  
   if (!document.hidden) {
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      safeLog('Page visible but no active WebSocket, forcing reconnect');
-      updateConnectionStatus('connecting', 'Page resumed, reconnecting...');
+    safeLog('Page became visible - checking connection status');
+    
+    if (currentLobbyId && (!ws || ws.readyState !== WebSocket.OPEN)) {
+      safeLog('In game but not connected - forcing immediate reconnect');
+      updateConnectionStatus('connecting', 'Reconnecting after page visibility...');
       
       setTimeout(() => {
-        forceReconnect();
-      }, 500);
-    } else {
+        forceImmediateReconnect();
+      }, 100);
+    } else if (ws && ws.readyState === WebSocket.OPEN) {
       lastPingTime = Date.now();
       try {
         ws.send(JSON.stringify({ type: 'ping' }));
       } catch (err) {
-        safeLog('Failed to send ping after visibility change, reconnecting');
+        safeLog('Failed to send ping after visibility change, will reconnect');
         setTimeout(() => {
-          forceReconnect();
-        }, 500);
+          forceImmediateReconnect();
+        }, 100);
       }
     }
   }
 });
 
-// Force reconnect function
 function forceReconnect() {
   safeLog('Forcing reconnect...');
   
@@ -480,7 +630,6 @@ function forceReconnect() {
       ws.onmessage = null;
       ws.close();
     } catch (err) {
-      // Ignore
     }
     ws = null;
   }
@@ -490,7 +639,6 @@ function forceReconnect() {
 }
 
 function exitLobby() {
-  // Stop auto-refresh first
   stopLobbyListAutoRefresh();
   
   if (reconnectTimer) {
@@ -512,16 +660,28 @@ function exitLobby() {
     try {
       ws.send(JSON.stringify({ type: 'exitLobby' }));
     } catch (err) {
-      // Ignore send errors
     }
     
     try {
       ws.close(1000, 'User exited lobby');
     } catch (err) {
-      // Ignore close errors
     }
   }
-  updateJoinButtonText();
+  
+  isSpectator = false;
+  currentLobbyId = null;
+  connectionAttempts = 0;
+  spectatorWantsToJoin = false;
+  spectatorHasClickedRestart = false;
+  hasClickedRestart = false;
+  myPlayerName = '';
+  joinType = 'browseLobbies';
+  isOwner = false;
+  impostorGuessOption = false;
+  twoImpostorsOption = false;
+  twoImpostorsMode = false;
+  isEjectedImpostor = false;
+  isImpostor = false;
   
   lobbyCard.classList.remove('hidden');
   gameCard.classList.add('hidden');
@@ -532,16 +692,10 @@ function exitLobby() {
   lobbyId.value = '';
   players.innerHTML = '';
   
-  isSpectator = false;
-  currentLobbyId = null;
-  connectionAttempts = 0;
-  spectatorWantsToJoin = false;
-  spectatorHasClickedRestart = false;
-  myPlayerName = '';
-  joinType = 'browseLobbies';
   updateConnectionStatus('disconnected');
   
   stopTurnTimerAnimation();
+  stopImpostorGuessTimerAnimation();
   
   if (window.pingInterval) {
     clearInterval(window.pingInterval);
@@ -550,27 +704,25 @@ function exitLobby() {
   
   safeLog('Exited lobby');
   
-  // FIX #2: Show the lobby list container
   const lobbyListContainer = document.getElementById('lobbyListContainer');
   if (lobbyListContainer) {
     lobbyListContainer.style.display = 'block';
   }
   
-  // Refresh lobby list after exiting
   setTimeout(() => {
     refreshLobbyList();
   }, 500);
   
-  // Start auto-refresh again
   startLobbyListAutoRefresh();
   
-  // Reconnect for lobby browsing
   setTimeout(() => {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       joinType = 'browseLobbies';
       connect();
     }
   }, 300);
+  
+  updateJoinButtonText();
 }
 
 function resetToLobbyScreen() {
@@ -605,37 +757,38 @@ function resetToLobbyScreen() {
   spectatorHasClickedRestart = false;
   myPlayerName = '';
   joinType = 'browseLobbies';
+  isOwner = false;
+  impostorGuessOption = false;
+  twoImpostorsOption = false;
+  twoImpostorsMode = false;
+  isEjectedImpostor = false;
   updateConnectionStatus('disconnected');
   
   stopTurnTimerAnimation();
+  stopImpostorGuessTimerAnimation();
   
   if (window.pingInterval) {
     clearInterval(window.pingInterval);
     window.pingInterval = null;
   }
   
-  // FIX #2: Show the lobby list container
   const lobbyListContainer = document.getElementById('lobbyListContainer');
   if (lobbyListContainer) {
     lobbyListContainer.style.display = 'block';
   }
   
-  // // Refresh lobby list when returning to lobby screen
-setTimeout(() => {
-  refreshLobbyList();
-}, 500);
-
-// Start auto-refresh of lobby list
-startLobbyListAutoRefresh();
-
-// FIX #3: Reconnect for lobby browsing if not already connected
-setTimeout(() => {
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    joinType = 'browseLobbies';
-    connect();
-  }
-}, 100);
-// Update join button text
+  setTimeout(() => {
+    refreshLobbyList();
+  }, 500);
+  
+  startLobbyListAutoRefresh();
+  
+  setTimeout(() => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      joinType = 'browseLobbies';
+      connect();
+    }
+  }, 100);
   updateJoinButtonText();
 }
 
@@ -648,11 +801,10 @@ function joinAsPlayer(isReconnect = false) {
   isSpectator = false;
   spectatorWantsToJoin = false;
   spectatorHasClickedRestart = false;
-  joinType = 'joinLobby';  // IMPORTANT: Set this before connect()
+  joinType = 'joinLobby';
   connectionAttempts = 0;
   reconnectDelay = 2000;
   
-  // Stop auto-refresh when joining a lobby
   stopLobbyListAutoRefresh();
   
   connect();
@@ -662,11 +814,10 @@ function joinAsSpectator() {
   isSpectator = true;
   spectatorWantsToJoin = false;
   spectatorHasClickedRestart = false;
-  joinType = 'joinSpectator';  // IMPORTANT: Set this before connect()
+  joinType = 'joinSpectator';
   connectionAttempts = 0;
   reconnectDelay = 2000;
   
-  // Stop auto-refresh when joining as spectator
   stopLobbyListAutoRefresh();
   
   connect();
@@ -716,7 +867,6 @@ function connect() {
     return;
   }
 
-  // Only require nickname for joinLobby or joinSpectator, not for browseLobbies
   if (!nickname.value.trim() && (joinType === 'joinLobby' || joinType === 'joinSpectator')) {
     alert('Please enter a nickname');
     return;
@@ -738,7 +888,6 @@ function connect() {
         ws.onmessage = null;
         ws.close();
       } catch (err) {
-        // Ignore
       }
       ws = null;
     }
@@ -746,77 +895,68 @@ function connect() {
     ws = new WebSocket(wsUrl);
     connectionAttempts++;
     
-    // Safari fix: Kill sockets stuck in CONNECTING state
     connectTimeout = setTimeout(() => {
       if (ws && ws.readyState === WebSocket.CONNECTING) {
         safeLog('WebSocket stuck in CONNECTING, forcing close');
         try {
           ws.close();
         } catch (err) {
-          // Ignore
         }
       }
     }, 5000);
     
-  ws.onopen = () => {
-  safeLog('Game connection established');
-  if (connectTimeout) {
-    clearTimeout(connectTimeout);
-    connectTimeout = null;
-  }
-  
-  connectionAttempts = 0;
-  reconnectDelay = 2000;
-  hasShownConnectionWarning = false;
-  updateConnectionStatus('connected');
-  
-  // Don't show game header for lobby browsing
-  if (joinType !== 'browseLobbies') {
-    gameHeader.classList.remove('hidden');
-  }
-  
-  if (window.pingInterval) clearInterval(window.pingInterval);
-  window.pingInterval = setInterval(() => {
-    if (ws.readyState === WebSocket.OPEN) {
-      lastPingTime = Date.now();
-      try {
-        ws.send(JSON.stringify({ type: 'ping' }));
-      } catch (err) {
-        safeError('Failed to send ping');
+    ws.onopen = () => {
+      safeLog('Game connection established');
+      if (connectTimeout) {
+        clearTimeout(connectTimeout);
+        connectTimeout = null;
       }
-    }
-  }, 25000);
-  
-  // FIX #2: Handle different connection types correctly
-  setTimeout(() => {
-    if (joinType === 'browseLobbies') {
-      // For browsing lobbies, just send a getLobbyList request
-      // Wait a bit to ensure connection is fully established
-      try {
-        ws.send(JSON.stringify({ type: 'getLobbyList' }));
-      } catch (err) {
-        safeError('Failed to send getLobbyList');
+      
+      connectionAttempts = 0;
+      reconnectDelay = 2000;
+      hasShownConnectionWarning = false;
+      updateConnectionStatus('connected');
+      
+      if (joinType !== 'browseLobbies') {
+        gameHeader.classList.remove('hidden');
       }
-    } else if (joinType === 'joinSpectator') {
-      // Joining as spectator
-      ws.send(JSON.stringify({
-        type: 'joinSpectator',
-        name: nickname.value.trim(),
-        lobbyId: lobbyId.value.trim(),
-        playerId
-      }));
-    } else {
-      // Default: joining as player (host or regular player)
-      ws.send(JSON.stringify({
-        type: 'joinLobby',
-        name: nickname.value.trim(),
-        lobbyId: lobbyId.value || undefined,
-        playerId
-      }));
-    }
-  }, 200);
-};
-  
+      
+      if (window.pingInterval) clearInterval(window.pingInterval);
+      window.pingInterval = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          lastPingTime = Date.now();
+          try {
+            ws.send(JSON.stringify({ type: 'ping' }));
+          } catch (err) {
+            safeError('Failed to send ping');
+          }
+        }
+      }, 25000);
+      
+      setTimeout(() => {
+        if (joinType === 'browseLobbies') {
+          try {
+            ws.send(JSON.stringify({ type: 'getLobbyList' }));
+          } catch (err) {
+            safeError('Failed to send getLobbyList');
+          }
+        } else if (joinType === 'joinSpectator') {
+          ws.send(JSON.stringify({
+            type: 'joinSpectator',
+            name: nickname.value.trim(),
+            lobbyId: lobbyId.value.trim(),
+            playerId
+          }));
+        } else {
+          ws.send(JSON.stringify({
+            type: 'joinLobby',
+            name: nickname.value.trim(),
+            lobbyId: lobbyId.value || undefined,
+            playerId
+          }));
+        }
+      }, 200);
+    };
 
     ws.onmessage = (e) => {
       try {
@@ -870,7 +1010,6 @@ function connect() {
         if (d.type === 'lobbyList') {
           updateLobbyList(d.lobbies || []);
           
-          // Show the lobby list container
           const lobbyListContainer = document.getElementById('lobbyListContainer');
           if (lobbyListContainer) {
             lobbyListContainer.style.display = 'block';
@@ -884,6 +1023,32 @@ function connect() {
           currentLobbyId = d.lobbyId;
           isSpectator = d.isSpectator || false;
           myPlayerName = d.yourName || d.playerName || nickname.value.trim();
+          isOwner = d.isOwner || false;
+          impostorGuessOption = d.impostorGuessOption || false;
+          twoImpostorsOption = d.twoImpostorsOption || false;
+          
+                    // Update header badges immediately
+          const headerImpostorText = document.getElementById('headerImpostorText');
+          const headerGuessBadge = document.getElementById('headerGuessBadge');
+          
+          if (headerImpostorText) {
+            headerImpostorText.textContent = twoImpostorsOption ? 2 : 1;
+          }
+          
+          if (headerGuessBadge) {
+            if (impostorGuessOption) {
+              headerGuessBadge.classList.remove('hidden');
+            } else {
+              headerGuessBadge.classList.add('hidden');
+            }
+          }
+
+          
+          // FIX: Properly restore spectator join state from server
+          if (d.isSpectator && d.wantsToJoinNextGame !== undefined) {
+            spectatorWantsToJoin = d.wantsToJoinNextGame;
+            spectatorHasClickedRestart = d.wantsToJoinNextGame;
+          }
           
           lobbyCodeDisplay.textContent = d.lobbyId;
           
@@ -892,41 +1057,62 @@ function connect() {
           }
           
           if (isSpectator) {
-            nickname.value = nickname.value.startsWith('👁️ ') ? nickname.value : `👁️ ${nickname.value.trim()}`;
             nickname.disabled = true;
           }
           
-          // Show exit button in header after joining lobby
           exitLobbyBtn.style.display = 'block';
           
-          // Hide lobby list when in a lobby
           const lobbyListContainer = document.getElementById('lobbyListContainer');
           if (lobbyListContainer) {
             lobbyListContainer.style.display = 'none';
           }
           
-          // FIX #3: Stop auto-refresh when assigned to a lobby
+          updateGameOptions();
+          
           stopLobbyListAutoRefresh();
         }
 
         if (d.type === 'lobbyUpdate') {
+          // Store player counts
+  currentPlayerCount = d.players ? d.players.filter(p => p.connected).length : 0;
           updatePlayerList(d.players, d.spectators);
+          // Update impostor count in header if game is active
+          if (!gameCard.classList.contains('hidden')) {
+            const headerImpostorText = document.getElementById('headerImpostorText');
+            if (headerImpostorText && d.players) {
+              const activeImpostors = d.players.filter(p => p.role === 'impostor' && p.connected).length;
+              if (activeImpostors > 0) {
+                headerImpostorText.textContent = activeImpostors;
+              }
+            }
+          }
+          const isOwnerCheck = d.owner === playerId;
+          isOwner = isOwnerCheck;
+          impostorGuessOption = d.impostorGuessOption || false;
+          twoImpostorsOption = d.twoImpostorsOption || false;
           
-          const isOwner = d.owner === playerId;
-          start.disabled = isSpectator || d.players.length < 3 || !isOwner;
+         // Validate minimum players based on game mode
+          const minPlayersForMode = twoImpostorsOption ? 5 : 3;
+          start.disabled = isSpectator || d.players.length < minPlayersForMode || !isOwnerCheck;
           
           spectate.style.display = isSpectator ? 'none' : 'block';
           join.style.display = isSpectator ? 'none' : 'block';
           
           exitLobbyBtn.style.display = 'block';
           
+          updateGameOptions();
+          
           if (d.phase && d.phase !== 'lobby') {
             players.innerHTML += `<br><i style="color:#f39c12">Game in progress: ${d.phase}</i>`;
           }
           
           if (isSpectator && (d.phase === 'lobby' || d.phase === 'results')) {
-            players.innerHTML += `<br><i style="color:#9b59b6">Click "Join Next Game" to play next round</i>`;
-          }
+  if (!spectatorWantsToJoin) {
+    players.innerHTML += `<br><i style="color:#9b59b6">Click "Join Next Game" to play next round</i>`;
+  } else {
+    players.innerHTML += `<br><i style="color:#2ecc71">You will join the next game automatically</i>`;
+  }
+}
           
           if (d.phase === 'results' && !isSpectator) {
             const myPlayerInfo = d.players.find(p => p.name === myPlayerName);
@@ -940,11 +1126,31 @@ function connect() {
           lobbyCard.classList.add('hidden');
           gameCard.classList.remove('hidden');
           
+                    // Update header game mode badges
+          const headerImpostorBadge = document.getElementById('headerImpostorBadge');
+          const headerImpostorText = document.getElementById('headerImpostorText');
+          const headerGuessBadge = document.getElementById('headerGuessBadge');
+          
+          if (headerImpostorBadge && headerImpostorText) {
+            // Set impostor count dynamically
+            const impostorCount = twoImpostorsOption ? 2 : 1;
+            headerImpostorText.textContent = impostorCount;
+            
+            if (headerGuessBadge) {
+              if (impostorGuessOption) {
+                headerGuessBadge.classList.remove('hidden');
+              } else {
+                headerGuessBadge.classList.add('hidden');
+              }
+            }
+          }
+
+          
           exitLobbyBtn.style.display = 'block';
           
-          hasClickedRestart = false;
-          spectatorHasClickedRestart = false;
-          spectatorWantsToJoin = false;
+          if (!isSpectator) {
+  hasClickedRestart = false;
+}
           
           if (d.playerName) {
             myPlayerName = d.playerName;
@@ -953,15 +1159,33 @@ function connect() {
             }
           }
           
+          if (!isSpectator && d.role !== 'spectator') {
+            nickname.value = nickname.value.replace('👁️ ', '');
+            nickname.disabled = false;
+          }
+          
           results.innerHTML = ''; 
           restart.classList.add('hidden');
           restart.style.opacity = '1';
           
           if (isSpectator || d.role === 'spectator') {
-            restart.innerText = 'Join Next Game';
+            // Always update spectator join state from server when game starts
+  if (d.wantsToJoinNextGame !== undefined) {
+    spectatorWantsToJoin = d.wantsToJoinNextGame;
+    if (d.wantsToJoinNextGame) {
+      spectatorHasClickedRestart = true;
+    }
+  }
+            if (spectatorWantsToJoin || spectatorHasClickedRestart) {
+              restart.innerText = 'Joining next game...';
+              restart.disabled = true;
+              restart.style.opacity = '0.7';
+            } else {
+              restart.innerText = 'Join Next Game';
+              restart.disabled = false;
+              restart.style.opacity = '1';
+            }
             restart.classList.remove('hidden');
-            restart.disabled = false;
-            restart.style.opacity = '1';
           } else {
             restart.innerText = 'Restart Game';
             restart.classList.add('hidden');
@@ -988,18 +1212,31 @@ function connect() {
             if (d.hint) {
               wordEl.innerHTML += `<div><strong>Hint:</strong> ${capitalize(d.hint)}</div>`;
             }
+            isImpostor = false;
           } else if (d.role === 'civilian') {
             roleBack.className = `role-back ${d.role}`;
             roleText.innerHTML = '<span style="color:#2ecc71">Civilian</span>';
             wordEl.textContent = `Word: ${capitalize(d.word)}`;
+            isImpostor = false;
           } else if (d.role === 'impostor') {
             roleBack.className = `role-back ${d.role}`;
             roleText.innerHTML = '<span style="color:#e74c3c">Impostor</span>';
             wordEl.textContent = `Hint: ${capitalize(d.word)}`;
+            isImpostor = true;
           }
         }
 
         if (d.type === 'turnUpdate') {
+          // Preserve spectator join state during ongoing rounds
+if (isSpectator && d.wantsToJoinNextGame !== undefined) {
+  spectatorWantsToJoin = d.wantsToJoinNextGame;
+
+  if (d.wantsToJoinNextGame) {
+    spectatorHasClickedRestart = true;
+  }
+}
+          isEjectedImpostor = false;
+          
           const formatWord = (entry) => {
             if (entry.word === '' || entry.word === null || entry.word === undefined) {
               return `${entry.name}: (skipped)`;
@@ -1011,12 +1248,17 @@ function connect() {
           round2El.innerHTML = d.round2.map(formatWord).join('<br>');
           
           stopTurnTimerAnimation();
+          stopImpostorGuessTimerAnimation();
           
           if (d.currentPlayer === 'Voting Phase') {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+  stopTurnTimerAnimation();
+  return;
+}
             turnEl.textContent = isSpectator ? 'Spectating - Voting Starting...' : 'Round Complete - Voting Starting...';
             submit.disabled = true;
             input.value = '';
-            input.placeholder = isSpectator ? 'Spectating voting...' : 'Get ready to vote...';
+            input.placeholder = isSpectator ? 'Spectating votes...' : 'Get ready to vote...';
             isMyTurn = false;
             currentTurnEndsAt = null;
           } else {
@@ -1032,47 +1274,213 @@ function connect() {
               submit.disabled = !isMyTurn;
               input.placeholder = isMyTurn ? 'Your word (30s)' : `Waiting for ${d.currentPlayer}...`;
               
-              // Use absolute time from server (turnEndsAt)
               if (d.turnEndsAt) {
                 currentTurnEndsAt = d.turnEndsAt;
-                if (isMyTurn) {
+                                if (isMyTurn) {
+                  console.log('Starting timer animation: isMyTurn=true, turnEndsAt=', d.turnEndsAt);
                   startTurnTimerAnimation(currentTurnEndsAt);
+                } else {
+                  console.log('Not starting timer: isMyTurn=false, currentPlayer=', d.currentPlayer, 'myName=', myPlayerName);
                 }
               }
             }
           }
         }
 
-        if (d.type === 'startVoting') {
-          stopTurnTimerAnimation();
+                                if (d.type === 'startVoting') {
+          console.log('========== RECEIVED startVoting ==========');
+          console.log('Message data:', JSON.stringify(d));
           
-          turnEl.textContent = isSpectator ? 'Spectating - Vote for the Impostor!' : 'Vote for the Impostor!';
+          stopTurnTimerAnimation();
+          stopImpostorGuessTimerAnimation();
+                    stopVotingTimerAnimation();
+
+          isEjectedImpostor = false;
+          
+          twoImpostorsMode = d.twoImpostorsMode || false;
+          
+          selectedVotes = [];
+          hasSubmittedVotes = false;
+          
+          // Use dynamic impostor count from server
+          const activeImpostorCount = d.activeImpostorCount || (twoImpostorsMode ? 2 : 1);
+          
+          console.log(`isSpectator: ${isSpectator}`);
+          console.log(`activeImpostorCount: ${activeImpostorCount}`);
+          console.log(`players array:`, d.players);
+
+          
+          // Use dynamic impostor count from server
+          // const activeImpostorCount = d.activeImpostorCount || (twoImpostorsMode ? 2 : 1);
+          
+          if (activeImpostorCount >= 2) {
+            turnEl.textContent = isSpectator ? 
+              `Spectating - Vote for ${activeImpostorCount} Impostors!` : 
+              `Vote for ${activeImpostorCount} Impostors! (Select ${activeImpostorCount} players)`;
+          } else {
+            turnEl.textContent = isSpectator ? 'Spectating - Vote for the Impostor!' : 'Vote for the Impostor!';
+          }
+          
           input.value = '';
           input.placeholder = isSpectator ? 'Spectating votes...' : 'Voting in progress...';
           submit.disabled = true;
           isMyTurn = false;
           currentTurnEndsAt = null;
           
+                    console.log('About to create voting UI...');
+          console.log('voting element exists:', !!voting);
+          
           if (isSpectator || d.isSpectator) {
+            console.log('Creating spectator voting UI');
             voting.innerHTML = '<h3>Spectating Votes</h3>' +
               d.players.map(p => `<div class="spectator-vote-btn">${p}</div>`).join('');
           } else {
-            voting.innerHTML = '<h3>Vote</h3>' +
+            console.log('Creating player voting UI');
+            let votingHeader = '<h3>Vote</h3>';
+            
+            if (activeImpostorCount >= 2) {
+              votingHeader += `<p style="color:#f39c12; font-size: 12px; margin-top: -5px; margin-bottom: 10px;">Select ${activeImpostorCount} players you think are impostors</p>`;
+              votingHeader += `<div id="voteCountDisplay" style="color:#f39c12; font-weight:bold; margin-bottom: 10px;">Selected: 0/${activeImpostorCount}</div>`;
+            }
+            
+            voting.innerHTML = votingHeader +
               d.players
                 .filter(p => p !== myPlayerName)
                 .map(p => `<button class="vote-btn" onclick="vote('${p}', this)">${p}</button>`)
                 .join('');
+            
+            if (activeImpostorCount >= 2) {
+              voting.innerHTML += `
+                <div class="voting-action-row">
+                <button id="submitVotesBtn" class="button-base vote-submit" onclick="submitVotes()">
+                    Submit Votes
+                  </button>
+                  <button id="clearVotesBtn" class="button-base vote-clear" onclick="clearVotes()">
+                    Clear
+                  </button>
+                </div>
+              `;
+            }
+          }
+          console.log('Voting UI created successfully');
+          console.log('========== END startVoting ==========');
+        }
+                if (d.type === 'allVoted') {
+          stopVotingTimerAnimation();
+          
+          // Show countdown message
+          turnEl.textContent = `All votes cast! Results in ${d.countdown} second${d.countdown > 1 ? 's' : ''}...`;
+          
+          // Disable all voting buttons
+          document.querySelectorAll('.vote-btn').forEach(b => {
+            b.style.pointerEvents = 'none';
+            b.style.opacity = '0.5';
+          });
+        }
+
+        if (d.type === 'votingTimer') {
+          if (d.votingEndsAt) {
+            startVotingTimerAnimation(d.votingEndsAt);
           }
         }
 
-        if (d.type === 'gameEndEarly') {
+                  
+        
+
+
+        if (d.type === 'impostorGuessPhase') {
           stopTurnTimerAnimation();
+          stopImpostorGuessTimerAnimation();
+          
           isMyTurn = false;
           currentTurnEndsAt = null;
+          isEjectedImpostor = false;
           
-          // FIXED: Don't show "Impostor Won" when impostor leaves
-          const winnerColor = '#f39c12'; // Orange for neutral message
+          const ejectedNames = Array.isArray(d.ejected) ? d.ejected : [d.ejected];
+          const ejectedText = ejectedNames.join(' and ');
+          
+          if (d.isImpostor) {
+            const playerIsEjected = ejectedNames.some(name => name === myPlayerName);
+            
+            if (playerIsEjected) {
+              isEjectedImpostor = true;
+              turnEl.textContent = 'You were voted out! Guess the word to win!';
+              input.placeholder = 'Guess the word (30s)...';
+              input.disabled = false;
+              submit.disabled = false;
+              submit.textContent = 'Submit Guess';
+              submit.onclick = submitImpostorGuess;
+              
+              if (d.guessEndsAt) {
+                startImpostorGuessTimerAnimation(d.guessEndsAt);
+              }
+              
+              const isMultiple = ejectedNames.length > 1;
+              voting.innerHTML = '<h3>Last Chance to Win!</h3>' +
+                `<p>${isMultiple ? 'You and the other ejected impostor have' : 'You have'} 30 seconds to guess the secret word.</p>` +
+                '<p>If any ejected impostor guesses correctly, the impostors win!</p>';
+            } else {
+              turnEl.textContent = 'Your teammate was voted out! They are guessing...';
+              input.placeholder = 'Waiting for teammate to guess...';
+              input.disabled = true;
+              submit.disabled = true;
+              
+              voting.innerHTML = '<h3>Teammate is Guessing</h3>' +
+                `<p>Your teammate (${ejectedText}) has 30 seconds to guess the secret word.</p>` +
+                '<p>If they guess correctly, the impostors win!</p>';
+            }
+          } else {
+            const isMultiple = ejectedNames.length > 1;
+            
+            if (isMultiple) {
+              turnEl.textContent = 'Impostors were voted out! They have 30 seconds to guess the word...';
+              voting.innerHTML = '<h3>Impostors are Guessing</h3>' +
+                `<p>The impostors (${ejectedText}) have 30 seconds to guess the secret word.</p>` +
+                '<p>If any of them guesses correctly, the impostors win!</p>';
+            } else {
+              turnEl.textContent = 'Impostor was voted out! They have 30 seconds to guess the word...';
+              voting.innerHTML = '<h3>Impostor is Guessing</h3>' +
+                `<p>The impostor (${ejectedText}) has 30 seconds to guess the secret word.</p>` +
+                '<p>If they guess correctly, the impostors win!</p>';
+            }
+            
+            input.placeholder = 'Waiting for impostor(s) to guess...';
+            input.disabled = true;
+            submit.disabled = true;
+          }
+          
+          results.innerHTML = '';
+        }
+
+if (d.type === 'gameEndEarly') {
+        stopTurnTimerAnimation();
+          
+        stopImpostorGuessTimerAnimation();
+
+          isMyTurn = false;
+          currentTurnEndsAt = null;
+          isImpostor = false;
+          isEjectedImpostor = false;
+
+          // FIX: Preserve spectator join state from server
+  if (d.isSpectator && d.wantsToJoinNextGame !== undefined) {
+    spectatorWantsToJoin = d.wantsToJoinNextGame;
+    if (d.wantsToJoinNextGame) {
+      spectatorHasClickedRestart = true;
+    }
+    
+    console.log(`GAME END EARLY: Spectator ${myPlayerName} wantsToJoinNextGame=${d.wantsToJoinNextGame}`);
+  }
+          
+          const winnerColor = '#f39c12';
           let reasonText = '';
+          
+          if (d.isSpectator && d.wantsToJoinNextGame !== undefined) {
+            spectatorWantsToJoin = d.wantsToJoinNextGame;
+            if (d.wantsToJoinNextGame) {
+              spectatorHasClickedRestart = true;
+            }
+          }
           
           if (d.reason === 'not_enough_players') {
             reasonText = `<div style="color:#f39c12; text-align:center; margin-bottom:10px;">
@@ -1099,7 +1507,6 @@ function connect() {
           });
           rolesHtml += '</div>';
           
-          // UPDATED: Word and hint on same line with proper alignment
           results.innerHTML =
             `<h2 style="color:${winnerColor}; text-align:center">Game Ended Early</h2>` +
             reasonText +
@@ -1117,22 +1524,30 @@ function connect() {
           
           if (isSpectator) {
             restart.classList.remove('hidden');
-            if (spectatorWantsToJoin) {
+            if (spectatorWantsToJoin || spectatorHasClickedRestart) {
               restart.innerText = 'Joining next game...';
               restart.disabled = true;
               restart.style.opacity = '0.7';
+
+              const playersInGame = d.roles ? d.roles.length : 0;
+      restart.innerText = `Joining next game... (0/${playersInGame} players ready)`;
             } else {
               restart.innerText = 'Join Next Game';
               restart.disabled = false;
               restart.style.opacity = '1';
             }
-            spectatorHasClickedRestart = false;
+            // Call updateGameOptions for spectators in results
+            updateGameOptions();
           } else if (myRoleInfo) {
             restart.classList.remove('hidden');
             restart.innerText = 'Restart Game';
             restart.disabled = false;
             restart.style.opacity = '1';
             hasClickedRestart = false;
+            // Call updateGameOptions for players in results
+            if (isOwner) {
+              updateGameOptions();
+            }
           } else {
             restart.classList.remove('hidden');
             restart.innerText = 'Join Next Game';
@@ -1140,16 +1555,69 @@ function connect() {
             restart.style.opacity = '1';
             hasClickedRestart = false;
           }
+
           
           turnEl.textContent = 'Game Ended Early';
         }
 
         if (d.type === 'gameEnd') {
           stopTurnTimerAnimation();
+          stopImpostorGuessTimerAnimation();
           isMyTurn = false;
           currentTurnEndsAt = null;
+          isImpostor = false;
+          isEjectedImpostor = false;
+
+          // FIX: Preserve spectator join state from server
+  if (d.isSpectator && d.wantsToJoinNextGame !== undefined) {
+    spectatorWantsToJoin = d.wantsToJoinNextGame;
+    if (d.wantsToJoinNextGame) {
+      spectatorHasClickedRestart = true;
+    }
+    
+    // Debug log
+    console.log(`GAME END: Spectator ${myPlayerName} wantsToJoinNextGame=${d.wantsToJoinNextGame}`);
+  }
           
-          const winnerColor = d.winner === 'Civilians' ? '#2ecc71' : '#e74c3c';
+          submit.textContent = 'Submit';
+          submit.onclick = submitWord;
+          
+          let winnerColor;
+          if (d.winner === 'Civilians') {
+            winnerColor = '#2ecc71';
+          } else if (d.winner === 'Impostors' || d.winner === 'Impostor') {
+            winnerColor = '#e74c3c';
+          } else if (d.winner === 'Draw') {
+            winnerColor = '#f39c12';
+          } else {
+            winnerColor = '#95a5a6';
+          }
+
+          // ADD CONFETTI HERE
+          if (!isSpectator && d.winner !== 'Draw' && d.winner !== 'Game Ended Early') {
+            const myRoleInfo = d.roles.find(r => r.name === myPlayerName);
+            if (myRoleInfo) {
+              const iWon = (myRoleInfo.role === 'civilian' && d.winner === 'Civilians') ||
+                          (myRoleInfo.role === 'impostor' && (d.winner === 'Impostors' || d.winner === 'Impostor'));
+              
+              if (iWon) {
+                // Trigger confetti
+                confetti({
+                  particleCount: 100,
+                  spread: 70,
+                  origin: { y: 0.6 }
+                });
+              }
+            }
+          }
+          
+          // FIX: Preserve spectator join state from server
+          if (d.isSpectator && d.wantsToJoinNextGame !== undefined) {
+            spectatorWantsToJoin = d.wantsToJoinNextGame;
+            if (d.wantsToJoinNextGame) {
+              spectatorHasClickedRestart = true;
+            }
+          }
           
           const myRoleInfo = d.roles.find(r => r.name === myPlayerName);
           
@@ -1170,25 +1638,99 @@ function connect() {
           if (d.votes) {
             Object.entries(d.votes).forEach(([voter, votedFor]) => {
               const voterRole = d.roles.find(r => r.name === voter)?.role;
-              const votedForRole = d.roles.find(r => r.name === votedFor)?.role;
-              
               const voterColor = voterRole === 'civilian' ? '#2ecc71' : '#e74c3c';
-              const votedForColor = votedForRole === 'civilian' ? '#2ecc71' : '#e74c3c';
               
-              votesHtml += `
-                <div class="vote-results-item">
-                  <span class="vote-voter" style="color:${voterColor}">${voter}</span>
-                  <div class="vote-arrow">→</div>
-                  <span class="vote-voted" style="color:${votedForColor}">${votedFor}</span>
-                </div>
-              `;
+              const votes = Array.isArray(votedFor) ? votedFor : [votedFor];
+              
+              votes.forEach(vote => {
+                const votedForRole = d.roles.find(r => r.name === vote)?.role;
+                const votedForColor = votedForRole === 'civilian' ? '#2ecc71' : '#e74c3c';
+                
+                votesHtml += `
+                  <div class="vote-results-item">
+                    <span class="vote-voter" style="color:${voterColor}">${voter}</span>
+                    <div class="vote-arrow">→</div>
+                    <span class="vote-voted" style="color:${votedForColor}">${vote}</span>
+                  </div>
+                `;
+              });
             });
           }
           votesHtml += '</div>';
           
-          // UPDATED: Word and hint on same line with proper alignment
+          let ejectedHtml = '';
+          if (d.ejected && d.ejected.length > 0) {
+            let ejectedText = '';
+            if (Array.isArray(d.ejected)) {
+              ejectedText = d.ejected.join(' and ');
+            } else {
+              ejectedText = d.ejected;
+            }
+            ejectedHtml = `<div style="margin: 10px 0; padding: 8px; background: rgba(231, 76, 60, 0.1); border-radius: 8px;">
+              <b>Ejected:</b> ${ejectedText}
+            </div>`;
+          }
+          
+          let impostorGuessHtml = '';
+          if (d.impostorGuesses && Object.keys(d.impostorGuesses).length > 0) {
+            let guessesHtml = '<div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; margin: 10px 0;">';
+            guessesHtml += '<b>Impostor Guesses:</b><br><br>';
+            
+            let anyCorrect = false;
+            Object.values(d.impostorGuesses).forEach(guessData => {
+              if (guessData.guess === d.secretWord.toLowerCase()) {
+                anyCorrect = true;
+                guessesHtml += `<div class="guess-result guess-correct">
+                  <strong>${guessData.name}:</strong> "${guessData.guess}" ✓
+                </div>`;
+              } else {
+                guessesHtml += `<div class="guess-result guess-incorrect">
+                  <strong>${guessData.name}:</strong> "${guessData.guess}" ✗
+                </div>`;
+              }
+            });
+            
+            if (anyCorrect) {
+              guessesHtml += '<br><div style="color:#2ecc71; font-weight:bold;">At least one impostor guessed correctly! Impostors win!</div>';
+            } else {
+              guessesHtml += '<br><div style="color:#e74c3c; font-weight:bold;">No impostors guessed correctly! Civilians win!</div>';
+            }
+            
+            guessesHtml += '</div>';
+            impostorGuessHtml = guessesHtml;
+          } else if (d.impostorGuess !== undefined) {
+            const guessResult = d.impostorGuessCorrect ? 
+              `<span style="color:#2ecc71">Correct guess! The impostors win!</span>` :
+              `<span style="color:#e74c3c">Wrong guess! The impostor said: "${d.impostorGuess}"</span>`;
+            
+            impostorGuessHtml = `
+              <div style="background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; margin: 10px 0;">
+                <b>Impostor's Last Chance:</b><br>
+                ${guessResult}
+              </div>
+            `;
+          }
+          
+          let modeIndicator = '';
+          if (d.twoImpostorsMode) {
+            modeIndicator = `<div style="color:#9b59b6; margin-bottom: 10px; text-align: center;">
+              <small>2 Impostors Mode</small>
+            </div>`;
+          }
+          
+          let reasonHtml = '';
+          if (d.reason === 'impostorGuessTimeout') {
+            reasonHtml = `<div style="color:#f39c12; text-align:center; margin:10px 0;">
+              <i>Time expired! Impostor(s) failed to guess in time.</i>
+            </div>`;
+          }
+          
           results.innerHTML =
-            `<h2 style="color:${winnerColor}; text-align:center">${d.winner} Won!</h2>` +
+            `<h2 style="color:${winnerColor}; text-align:center">${d.winner} ${d.winner === 'Draw' ? '' : 'Won!'}</h2>` +
+            modeIndicator +
+            reasonHtml +
+            impostorGuessHtml +
+            ejectedHtml +
             `<div class="word-hint-container">
               <div><b>Word:</b> ${capitalize(d.secretWord)}</div>
               <span class="word-hint-separator">|</span>
@@ -1205,22 +1747,29 @@ function connect() {
           
           if (isSpectator) {
             restart.classList.remove('hidden');
-            if (spectatorWantsToJoin) {
+            if (spectatorWantsToJoin || spectatorHasClickedRestart) {
               restart.innerText = 'Joining next game...';
               restart.disabled = true;
               restart.style.opacity = '0.7';
+              const playersInGame = d.roles ? d.roles.length : 0;
+      restart.innerText = `Joining next game... (0/${playersInGame} players ready)`;
             } else {
               restart.innerText = 'Join Next Game';
               restart.disabled = false;
               restart.style.opacity = '1';
             }
-            spectatorHasClickedRestart = false;
+            // Call updateGameOptions for spectators in results
+            updateGameOptions();
           } else if (myRoleInfo) {
             restart.classList.remove('hidden');
             restart.innerText = 'Restart Game';
             restart.disabled = false;
             restart.style.opacity = '1';
             hasClickedRestart = false;
+            // Call updateGameOptions for players in results
+            if (isOwner) {
+              updateGameOptions();
+            }
           } else {
             restart.classList.remove('hidden');
             restart.innerText = 'Join Next Game';
@@ -1228,26 +1777,40 @@ function connect() {
             restart.style.opacity = '1';
             hasClickedRestart = false;
           }
+
           
           turnEl.textContent = isSpectator ? 'Spectating - Game Over' : 'Game Over - Results';
         }
 
         if (d.type === 'restartUpdate') {
-          if (d.isSpectator) {
-            if (d.wantsToJoin || d.status === 'joining') {
-              if (spectatorHasClickedRestart) {
-                restart.innerText = `Joining next game... (${d.readyCount}/${d.totalPlayers} players ready)`;
-                restart.disabled = true;
-                restart.style.opacity = '0.7';
-              } else {
-                restart.innerText = 'Join Next Game';
-                restart.disabled = false;
-                restart.style.opacity = '1';
-              }
+          currentSpectatorsWantingCount = d.spectatorsWantingToJoin || 0;
+          console.log(`=== RESTART UPDATE ===`);
+  console.log(`isSpectator: ${isSpectator}, wantsToJoin: ${d.wantsToJoin}`);
+  console.log(`readyCount: ${d.readyCount}, totalPlayers: ${d.totalPlayers}`);
+  console.log(`spectatorsWantingToJoin: ${d.spectatorsWantingToJoin}`);
+if (isSpectator) {
+  spectatorWantsToJoin = d.wantsToJoin;
+}
+
+          
+          if (isSpectator) {
+            spectatorWantsToJoin = d.wantsToJoin || false;
+
+            if (d.wantsToJoin) {
+              spectatorHasClickedRestart = true;
+            }
+            console.log(`Updated spectatorWantsToJoin to: ${spectatorWantsToJoin}`);
+
+            if (spectatorWantsToJoin) {
+              restart.innerText =
+                `Joining next game... (${d.readyCount}/${d.totalPlayers} players ready)`;
+              restart.disabled = true;
+              restart.style.opacity = '0.7';
             } else {
               restart.innerText = 'Join Next Game';
               restart.disabled = false;
               restart.style.opacity = '1';
+              spectatorHasClickedRestart = false;
             }
           } else {
             if (d.playerRole) {
@@ -1278,7 +1841,15 @@ function connect() {
           isSpectator = false;
           spectatorWantsToJoin = false;
           spectatorHasClickedRestart = false;
-          nickname.value = nickname.value.replace('👁️ ', '');
+          hasClickedRestart = false;
+          
+          if (d.playerName) {
+            myPlayerName = d.playerName.replace('👁️ ', '').trim();
+          } else {
+            myPlayerName = nickname.value.replace('👁️ ', '').trim();
+          }
+          
+          nickname.value = myPlayerName;
           nickname.disabled = false;
           
           if (document.getElementById('playerNameDisplay')) {
@@ -1288,6 +1859,14 @@ function connect() {
           restart.innerText = 'Restart Game';
           restart.disabled = false;
           restart.style.opacity = '1';
+          
+          if (gameCard && !gameCard.classList.contains('hidden')) {
+            restart.classList.remove('hidden');
+          }
+          
+          if (lobbyCard && !lobbyCard.classList.contains('hidden')) {
+            nickname.value = myPlayerName;
+          }
         }
 
       } catch (error) {
@@ -1314,6 +1893,7 @@ function connect() {
       }
       
       stopTurnTimerAnimation();
+      stopImpostorGuessTimerAnimation();
       
       if (event.code === 1000 || event.code === 1001) {
         updateConnectionStatus('disconnected', 'Disconnected');
@@ -1336,6 +1916,414 @@ function connect() {
   }
 }
 
+function updateVoteCountDisplay() {
+  const voteCountElement = document.getElementById('voteCountDisplay');
+  if (voteCountElement) {
+    const targetCount = parseInt(voteCountElement.textContent.split('/')[1]) || 2;
+    voteCountElement.textContent = `Selected: ${selectedVotes.length}/${targetCount}`;
+    if (selectedVotes.length === targetCount) {
+      voteCountElement.style.color = '#2ecc71';
+    } else {
+      voteCountElement.style.color = '#f39c12';
+    }
+  }
+}
+
+let voteSubmitTimer = null;
+window.vote = (v, btnElement) => {
+  if (isSpectator) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    showConnectionWarning('Connection lost. Please wait for reconnection...');
+    return;
+  }
+  
+    // Prevent voting if already submitted (but allow deselection)
+  if (hasSubmittedVotes && !btnElement.classList.contains('selected')) {
+    return;
+  }
+
+
+  
+  // Get active impostor count from voting display
+  const voteCountDisplay = document.getElementById('voteCountDisplay');
+  const requireMultipleVotes = voteCountDisplay && voteCountDisplay.textContent.includes('/');
+  const targetVoteCount = voteCountDisplay ? 
+    parseInt(voteCountDisplay.textContent.split('/')[1]) : 1;
+  
+  if (requireMultipleVotes && targetVoteCount >= 2) {
+    const index = selectedVotes.indexOf(v);
+    
+    if (index === -1) {
+      if (selectedVotes.length < targetVoteCount) {
+        selectedVotes.push(v);
+        btnElement.classList.add('selected');
+      }
+    } else {
+      selectedVotes.splice(index, 1);
+      btnElement.classList.remove('selected');
+    }
+    
+    updateVoteCountDisplay();
+    
+    if (selectedVotes.length === targetVoteCount) {
+      submitVotes();
+    }
+  } else {
+    // Single vote mode - allow changing
+    // Clear any pending auto-submit
+    if (voteSubmitTimer) {
+      clearTimeout(voteSubmitTimer);
+      voteSubmitTimer = null;
+    }
+    
+                if (btnElement.classList.contains('selected')) {
+      // Deselect
+      // Clear any pending auto-submit timer
+      if (voteSubmitTimer) {
+        clearTimeout(voteSubmitTimer);
+        voteSubmitTimer = null;
+      }
+      
+      selectedVotes = [];
+      btnElement.classList.remove('selected');
+      hasSubmittedVotes = false;
+      
+      // Re-enable all buttons
+      document.querySelectorAll('.vote-btn').forEach(b => {
+        b.style.pointerEvents = 'auto';
+        b.classList.remove('selected');
+      });
+      
+      // Update turn text
+      turnEl.textContent = isSpectator ? 'Spectating - Vote for the Impostor!' : 'Vote for the Impostor!';
+    } else {
+      // Select (clear previous selection)
+      document.querySelectorAll('.vote-btn').forEach(b => {
+        b.classList.remove('selected');
+        b.style.pointerEvents = 'auto';
+      });
+      
+      selectedVotes = [v];
+      btnElement.classList.add('selected');
+      
+            // Auto-submit after 1.5 seconds (gives time to change)
+      voteSubmitTimer = setTimeout(() => {
+        if (selectedVotes.includes(v) && ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'vote', vote: v }));
+          hasSubmittedVotes = true;
+          voteSubmitTimer = null;
+          
+          // Show visual feedback that vote was cast
+          turnEl.textContent = `Vote cast for ${v}. Waiting for others...`;
+        }
+      }, 1500);
+
+    }
+  }
+};
+
+
+function submitVotes() {
+  if (hasSubmittedVotes || selectedVotes.length === 0) return;
+  
+  const voteCountDisplay = document.getElementById('voteCountDisplay');
+  const targetVoteCount = voteCountDisplay ? 
+    parseInt(voteCountDisplay.textContent.split('/')[1]) : 2;
+    
+  if (targetVoteCount >= 2) {
+    if (selectedVotes.length !== targetVoteCount) {
+      const voteCountElement = document.getElementById('voteCountDisplay');
+      if (voteCountElement) {
+        voteCountElement.style.color = '#e74c3c';
+        voteCountElement.textContent = 'Please select exactly ${targetVoteCount} players';
+        setTimeout(() => {
+          updateVoteCountDisplay();
+        }, 2000);
+      }
+      return;
+    }
+    
+    // Check for duplicate votes
+    const uniqueVotes = [...new Set(selectedVotes)];
+    if (uniqueVotes.length !== targetVoteCount) {
+      const voteCountElement = document.getElementById('voteCountDisplay');
+      if (voteCountElement) {
+        voteCountElement.style.color = '#e74c3c';
+        voteCountElement.textContent = 'Cannot vote for same player twice';
+        setTimeout(() => {
+          updateVoteCountDisplay();
+        }, 2000);
+      }
+      return;
+    }
+  }
+  
+  ws.send(JSON.stringify({ type: 'vote', vote: twoImpostorsMode ? selectedVotes : selectedVotes[0] }));
+  hasSubmittedVotes = true;
+  
+  const buttons = document.querySelectorAll('.vote-btn');
+  buttons.forEach(b => {
+    b.style.opacity = '0.3';
+    b.style.pointerEvents = 'none';
+  });
+  
+  const voteCountElement = document.getElementById('voteCountDisplay');
+  if (voteCountElement) {
+    voteCountElement.textContent = 'Votes submitted!';
+    voteCountElement.style.color = '#2ecc71';
+  }
+}
+
+window.clearVotes = () => {
+  selectedVotes = [];
+  hasSubmittedVotes = false;
+  
+  // Clear auto-submit timer
+  if (voteSubmitTimer) {
+    clearTimeout(voteSubmitTimer);
+    voteSubmitTimer = null;
+  }
+  
+  const buttons = document.querySelectorAll('.vote-btn');
+  buttons.forEach(b => {
+    b.classList.remove('selected');
+    b.style.opacity = '1';
+    b.style.pointerEvents = 'auto';
+  });
+  
+  updateVoteCountDisplay();
+};
+
+
+function submitImpostorGuess() {
+  if (!input.value.trim() || !isEjectedImpostor) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    showConnectionWarning('Connection lost. Please wait for reconnection...');
+    return;
+  }
+  
+  ws.send(JSON.stringify({ 
+    type: 'impostorGuess', 
+    guess: input.value.trim() 
+  }));
+  
+  input.value = '';
+  input.disabled = true;
+  submit.disabled = true;
+  submit.textContent = 'Guess Submitted';
+  isEjectedImpostor = false;
+}
+
+function submitWord() {
+  if (!input.value.trim() || isSpectator) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    showConnectionWarning('Connection lost. Please wait for reconnection...');
+    return;
+  }
+  ws.send(JSON.stringify({ type: 'submitWord', word: input.value.trim() }));
+  input.value = '';
+}
+
+function toggleTwoImpostorsOption() {
+  // Only allow owner to toggle
+  if (!isOwner) return;
+  const checkbox = document.querySelector('#twoImpostorsToggle input[type="checkbox"]');
+  if (!checkbox || !ws || ws.readyState !== WebSocket.OPEN) return;
+  
+  ws.send(JSON.stringify({ 
+    type: 'toggleTwoImpostors', 
+    enabled: checkbox.checked 
+  }));
+}
+
+function toggleImpostorGuessOption() {
+  // Only allow owner to toggle
+  if (!isOwner) return;
+  const checkbox = document.querySelector('#impostorGuessToggle input[type="checkbox"]');
+  if (!checkbox || !ws || ws.readyState !== WebSocket.OPEN) return;
+  
+  ws.send(JSON.stringify({ 
+    type: 'toggleImpostorGuess', 
+    enabled: checkbox.checked 
+  }));
+}
+
+function updateGameOptions() {
+  const gameOptionsContainer = document.getElementById('gameOptionsContainer');
+  const twoImpostorsToggle = document.getElementById('twoImpostorsToggle');
+  const impostorGuessToggle = document.getElementById('impostorGuessToggle');
+  
+  if (!gameOptionsContainer || !twoImpostorsToggle || !impostorGuessToggle) return;
+  
+  // Hide entire container for spectators
+  if (isSpectator) {
+    gameOptionsContainer.style.display = 'none';
+    return;
+  }
+  
+  // Determine current phase
+  const isInLobby = lobbyCard && !lobbyCard.classList.contains('hidden');
+  const isInResults = !isInLobby && restart && !restart.classList.contains('hidden');
+  
+  // Show container only in lobby or results phase
+  if (isInLobby || isInResults) {
+    gameOptionsContainer.style.display = 'flex';
+  } else {
+    gameOptionsContainer.style.display = 'none';
+    return;
+  }
+  
+  // Use server-sent counts instead of DOM querying
+const totalPlayers = currentPlayerCount + currentSpectatorsWantingCount;
+const hasEnoughForTwoImpostors = totalPlayers >= 5;
+  
+  // Update Two Impostors toggle
+  const twoImpostorsCheckbox = twoImpostorsToggle.querySelector('input[type="checkbox"]');
+  const twoImpostorsLabel = twoImpostorsToggle.querySelector('.toggle-label');
+  
+  if (twoImpostorsCheckbox && twoImpostorsLabel) {
+    twoImpostorsCheckbox.checked = twoImpostorsOption;
+    
+    // Disable if not owner OR not enough players
+    const canToggle = isOwner && hasEnoughForTwoImpostors;
+    twoImpostorsCheckbox.disabled = !canToggle;
+    
+    if (canToggle) {
+      twoImpostorsLabel.style.color = '#fff';
+      twoImpostorsLabel.style.cursor = 'pointer';
+      twoImpostorsCheckbox.style.cursor = 'pointer';
+      twoImpostorsToggle.style.opacity = '1';
+    } else {
+      twoImpostorsLabel.style.color = '#95a5a6';
+      twoImpostorsLabel.style.cursor = 'not-allowed';
+      twoImpostorsCheckbox.style.cursor = 'not-allowed';
+      twoImpostorsToggle.style.opacity = '0.7';
+    }
+  }
+  
+  // Update Impostor Guess toggle
+  const impostorGuessCheckbox = impostorGuessToggle.querySelector('input[type="checkbox"]');
+  const impostorGuessLabel = impostorGuessToggle.querySelector('.toggle-label');
+  
+  if (impostorGuessCheckbox && impostorGuessLabel) {
+    impostorGuessCheckbox.checked = impostorGuessOption;
+    impostorGuessCheckbox.disabled = !isOwner;
+    
+    if (isOwner) {
+      impostorGuessLabel.style.color = '#fff';
+      impostorGuessLabel.style.cursor = 'pointer';
+      impostorGuessCheckbox.style.cursor = 'pointer';
+      impostorGuessToggle.style.opacity = '1';
+    } else {
+      impostorGuessLabel.style.color = '#95a5a6';
+      impostorGuessLabel.style.cursor = 'not-allowed';
+      impostorGuessCheckbox.style.cursor = 'not-allowed';
+      impostorGuessToggle.style.opacity = '0.7';
+    }
+  }
+}
+
+// Delete updateTwoImpostorsToggle() and updateImpostorGuessToggle()
+// Replace all calls to them with updateGameOptions()
+
+
+// --- TOOLTIP LOGIC ---
+
+const tooltipData = {
+  twoImpostors: `
+    <strong>2 Impostors Mode</strong><br><br>
+    The game will have 2 impostors. In voting phase, select 2 players you suspect.<br><br>
+    • Both impostors voted out = Civilians win<br>
+    • No impostors voted out = Impostors win<br>
+    • One voted out = Draw<br><br>
+    <em>Requires 5+ players.</em>
+  `,
+  impostorGuess: `
+    <strong>Impostor Guess Word</strong><br><br>
+    If an impostor is voted out, they get a 30-second "Last Chance".<br><br>
+    If they correctly guess the secret word within the time limit, the Impostors steal the win!
+  `
+};
+
+const tooltipEl = document.getElementById('infoTooltip');
+let activeTooltipTarget = null;
+
+function handleInfoClick(e) {
+  // CRITICAL: Prevent the label click from toggling the checkbox
+  e.preventDefault();
+  e.stopPropagation();
+
+  const target = e.currentTarget;
+  const infoType = target.getAttribute('data-info');
+  
+  // If clicking the same icon, toggle it off
+  if (activeTooltipTarget === target) {
+    hideTooltip();
+    return;
+  }
+
+  // Set content
+  if (tooltipData[infoType]) {
+    tooltipEl.innerHTML = tooltipData[infoType];
+    activeTooltipTarget = target;
+    
+    // Make visible to calculate size
+    tooltipEl.classList.add('visible');
+    
+    // Calculate Position
+    const iconRect = target.getBoundingClientRect();
+    const tooltipRect = tooltipEl.getBoundingClientRect();
+    
+    // Center horizontally relative to icon
+    let left = iconRect.left + (iconRect.width / 2) - (tooltipRect.width / 2);
+    
+    // Position below the icon
+    let top = iconRect.bottom + 10 + window.scrollY;
+
+    // Prevent going off screen (Mobile adjustment)
+    if (left < 10) left = 10;
+    if (left + tooltipRect.width > window.innerWidth - 10) {
+      left = window.innerWidth - tooltipRect.width - 10;
+    }
+
+    tooltipEl.style.left = `${left}px`;
+    tooltipEl.style.top = `${top}px`;
+  }
+}
+
+function hideTooltip() {
+  tooltipEl.classList.remove('visible');
+  activeTooltipTarget = null;
+}
+
+// Attach listeners specifically to the icons
+document.addEventListener('DOMContentLoaded', () => {
+  const infoIcons = document.querySelectorAll('.prevent-toggle');
+  
+  infoIcons.forEach(icon => {
+    icon.addEventListener('click', handleInfoClick);
+    // Also handle touch start to prevent ghost clicks on mobile
+    icon.addEventListener('touchstart', (e) => {
+      // We let the click event handle the logic, but we might need 
+      // to stop propagation here depending on device
+      e.stopPropagation(); 
+    }, { passive: true });
+  });
+
+  // Close tooltip if clicking anywhere else
+  document.addEventListener('click', (e) => {
+    if (activeTooltipTarget && !e.target.classList.contains('prevent-toggle')) {
+      hideTooltip();
+    }
+  });
+  
+  // Close on scroll
+  window.addEventListener('scroll', () => {
+    if (activeTooltipTarget) hideTooltip();
+  });
+});
+
+
 join.onclick = () => joinAsPlayer(false);
 spectate.onclick = joinAsSpectator;
 exitLobbyBtn.onclick = exitLobby;
@@ -1348,15 +2336,7 @@ start.onclick = () => {
   ws.send(JSON.stringify({ type: 'startGame' }));
 };
 
-submit.onclick = () => {
-  if (!input.value.trim() || isSpectator) return;
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    showConnectionWarning('Connection lost. Please wait for reconnection...');
-    return;
-  }
-  ws.send(JSON.stringify({ type: 'submitWord', word: input.value.trim() }));
-  input.value = '';
-};
+submit.onclick = submitWord;
 
 restart.onclick = () => {
   if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -1364,51 +2344,37 @@ restart.onclick = () => {
     return;
   }
   
+  // Prevent double clicks
+  if (restart.disabled) return;
+  
   if (isSpectator) {
-    if (restart.innerText === 'Join Next Game') {
-      spectatorWantsToJoin = true;
+    if (!spectatorHasClickedRestart || !spectatorWantsToJoin) {
       spectatorHasClickedRestart = true;
-      ws.send(JSON.stringify({ type: 'restart' }));
+      spectatorWantsToJoin = true;
+      
+      // Visual feedback
       restart.innerText = 'Joining next game...';
       restart.disabled = true;
       restart.style.opacity = '0.7';
+      
+      // Send restart request
+      ws.send(JSON.stringify({ type: 'restart' }));
+      // Also send a manual update to server to ensure state is tracked
+      console.log(`SPECTATOR: ${myPlayerName} wants to join next game, sent restart message`);
     }
   } else {
-    if (restart.innerText === 'Join Next Game') {
+    if (!hasClickedRestart) {
       hasClickedRestart = true;
-      ws.send(JSON.stringify({ type: 'restart' }));
-      restart.innerText = 'Joining next game...';
-      restart.disabled = true;
-      restart.style.opacity = '0.7';
-    } else if (restart.innerText === 'Restart Game') {
-      hasClickedRestart = true;
-      ws.send(JSON.stringify({ type: 'restart' }));
+      
+      // Visual feedback
       restart.innerText = 'Waiting for others...';
       restart.disabled = true;
       restart.style.opacity = '0.7';
+      
+      // Send restart request
+      ws.send(JSON.stringify({ type: 'restart' }));
     }
   }
-};
-
-window.vote = (v, btnElement) => {
-  if (isSpectator) return;
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
-    showConnectionWarning('Connection lost. Please wait for reconnection...');
-    return;
-  }
-  ws.send(JSON.stringify({ type: 'vote', vote: v }));
-  
-  const buttons = document.querySelectorAll('.vote-btn');
-  buttons.forEach(b => {
-    if (b === btnElement) {
-      b.style.background = '#fff';
-      b.style.color = '#000';
-      b.style.fontWeight = 'bold';
-    } else {
-      b.style.opacity = '0.3';
-      b.style.pointerEvents = 'none';
-    }
-  });
 };
 
 nickname.addEventListener('keypress', (e) => {
@@ -1420,30 +2386,34 @@ lobbyId.addEventListener('keypress', (e) => {
 });
 
 input.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter' && !isSpectator) submit.click();
+  if (e.key === 'Enter') {
+    if (isEjectedImpostor && submit.onclick === submitImpostorGuess) {
+      submitImpostorGuess();
+    } else if (!isSpectator) {
+      submitWord();
+    }
+  }
 });
 
-// Page lifecycle events for Android/Chrome
 window.addEventListener('pageshow', (e) => {
   if (e.persisted) {
     safeLog('Page restored from bfcache, forcing reconnect');
     setTimeout(() => {
-      forceReconnect();
+      forceImmediateReconnect();
     }, 100);
   }
 });
 
-// Network online event for Android network switches
 window.addEventListener('online', () => {
   safeLog('Network came online, checking connection');
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
+  if (currentLobbyId && (!ws || ws.readyState !== WebSocket.OPEN)) {
+    safeLog('Network restored while in game - reconnecting immediately');
     setTimeout(() => {
-      forceReconnect();
-    }, 500);
+      forceImmediateReconnect();
+    }, 100);
   }
 });
 
-// Periodic connection health check
 setInterval(() => {
   if (gameCard && !gameCard.classList.contains('hidden')) {
     if (ws && ws.readyState !== WebSocket.OPEN) {
@@ -1466,28 +2436,69 @@ window.addEventListener('beforeunload', () => {
     try {
       ws.send(JSON.stringify({ type: 'disconnecting' }));
     } catch (err) {
-      // Connection already closing
     }
   }
 });
 
+const style = document.createElement('style');
+style.textContent = `
+  .guess-result {
+    margin: 5px 0;
+    padding: 5px 10px;
+    border-radius: 4px;
+  }
+  .guess-correct {
+    background-color: rgba(46, 204, 113, 0.2);
+    border-left: 3px solid #2ecc71;
+  }
+  .guess-incorrect {
+    background-color: rgba(231, 76, 60, 0.2);
+    border-left: 3px solid #e74c3c;
+  }
+  .role-badge {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: bold;
+    text-align: center;
+    line-height: 18px;
+    margin-left: 5px;
+  }
+  .role-badge.role-civilian {
+    background-color: #2ecc71;
+    color: white;
+  }
+  .role-badge.role-impostor {
+    background-color: #e74c3c;
+    color: white;
+  }
+`;
+document.head.appendChild(style);
+
 updateConnectionStatus('disconnected');
 safeLog('Game client initialized');
 
-// FIX #1: Auto-connect for lobby browsing AND start auto-refresh
-// This runs immediately when page loads for ALL players
-window.addEventListener('DOMContentLoaded', () => {
+// Initialize immediately or wait for DOMContentLoaded
+function initializeGame() {
   setTimeout(() => {
-    // Only connect if we're not already in a lobby/game
     if (lobbyCard && !lobbyCard.classList.contains('hidden')) {
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         joinType = 'browseLobbies';
         connect();
       } else {
-        // Already connected, just refresh the lobby list
         refreshLobbyList();
       }
       startLobbyListAutoRefresh();
     }
   }, 100);
-});
+}
+
+// Run immediately if DOM is already loaded, otherwise wait
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeGame);
+} else {
+  // DOM already loaded, run immediately
+  initializeGame();
+}

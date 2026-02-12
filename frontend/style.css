@@ -35,15 +35,18 @@ body {
   justify-content: space-between;
   align-items: center;
   height: 100%;
+  gap: 8px;
 }
 
 .lobby-info {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 8px;
   flex: 1;
   min-width: 0;
 }
+
 
 .lobby-code-container {
   display: flex;
@@ -85,7 +88,49 @@ body {
   gap: 6px;
   font-size: 12px;
   min-width: 0;
+  flex: 0 0 auto;
+}
+
+
+.game-mode-badges {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+
+.header-badge {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(13, 17, 28, 0.6);
+  border: 1px solid rgba(106, 139, 255, 0.2);
+  white-space: nowrap;
+}
+
+.header-badge.impostor-badge {
+  color: #e74c3c;
+  border-color: rgba(231, 76, 60, 0.3);
+  background: rgba(231, 76, 60, 0.1);
+}
+
+.header-badge.guess-badge {
+  color: #f39c12;
+  border-color: rgba(243, 156, 18, 0.3);
+  background: rgba(243, 156, 18, 0.1);
+}
+
+.badge-icon {
+  font-size: 11px;
+  line-height: 1;
 }
 
 .status-dot {
@@ -147,14 +192,14 @@ body {
 
 /* Lobby List Styles */
 .lobby-list-container {
-  min-height: 150px !important;
-  max-height: 200px !important;
-  height: auto;
+  min-height: 100px !important;
+  max-height: 150px !important;
+  /* height: auto; */
   overflow: hidden;
   margin-top: 10px;
   background: rgba(13, 17, 28, 0.6);
   border-radius: 14px;
-  padding: 10px;
+  padding: 10px 10px;
   border: 1px solid rgba(106, 139, 255, 0.2);
 }
 
@@ -213,7 +258,7 @@ body {
 .lobby-item {
   background: rgba(20, 25, 40, 0.8);
   border-radius: 10px;
-  /* padding: 12px;*/
+  padding: 8px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -230,11 +275,12 @@ body {
 .lobby-info {
   flex: 1;
   min-width: 0;
-  display: flex;           /* Add this */
-  align-items: center;     /* Add this */
-  gap: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   text-transform: capitalize;
 }
+
 
 .lobby-code {
   font-family: monospace;
@@ -243,7 +289,11 @@ body {
   color: #6a8bff;
   margin-bottom: 0px;
   flex-shrink: 0;
+  min-width: 60px;
+  text-align: center;
 }
+
+
 
 .lobby-host {
   display: flex;
@@ -271,6 +321,7 @@ body {
 .lobby-stats {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   font-size: 12px;
   color: #7f8c8d;
   margin-bottom: 0;       /* Add this */
@@ -290,7 +341,7 @@ body {
   color: white;
   border: none;
   border-radius: 8px;
-  padding: 8px 16px;
+  padding: 6px 12px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -320,8 +371,8 @@ body {
 
 /* Base button with flexbox */
 .button-base {
-  height: 44px;
-  min-height: 44px;
+  height: 38px;
+  min-height: 38px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -687,6 +738,43 @@ input:disabled {
   filter: brightness(0.85);
 }
 
+/* Voting action row – ensures buttons stay side by side */
+.voting-action-row {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: nowrap;        /* allows stacking on very small screens */
+  justify-content: center;
+}
+
+.voting-action-row .button-base {
+  flex: 1;
+  min-width: 120px;      /* prevents buttons from becoming too narrow */
+  max-width: 200px;
+}
+
+/* Optional: better touch targets on mobile */
+@media (max-width: 400px) {
+  .voting-action-row {
+    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .voting-action-row .button-base {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+}
+
+.vote-submit {
+  background: linear-gradient(135deg, #27ae60, #2ecc71);
+}
+.vote-clear {
+  background: linear-gradient(135deg, #e74c3c, #c0392b);
+}
+
 .spectator-vote-btn {
   width: 100%;
   margin-top: 6px;
@@ -743,6 +831,8 @@ input:disabled {
 
 .word-hint-container div {
   display: flex;
+  flex: 1 1 100%;       /* full width on wrap */
+  text-align: center;
   align-items: center;
   min-width: 0;
 }
@@ -775,6 +865,14 @@ input:disabled {
   flex-shrink: 0;
   min-width: 20px;
   text-align: center;
+  display: inline;
+}
+
+@media (min-width: 400px) {
+  .word-hint-container div {
+    flex: 1 1 auto;
+    text-align: left;   /* restore original */
+  }
 }
 
 /* Roles section - align role text */
@@ -815,7 +913,8 @@ input:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 4px;
+  gap: 2px;
+  flex-wrap: wrap;
 }
 
 .vote-results-item .vote-voter {
@@ -886,4 +985,466 @@ input:disabled {
 
 .lobby-list::-webkit-scrollbar-thumb:hover {
   background: #8a6aff;
+}
+
+/* Lobby code wrapper for positioning badges */
+.lobby-code-wrapper {
+  position: relative;
+  display: inline-block;
+  padding-right: 18px;
+  margin-right: 6px;
+}
+
+
+/* Stacked badges container */
+.lobby-badges-stack {
+  position: absolute;
+  top: -4px;
+  right: 0px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+
+/* Individual stacked badge */
+.stacked-badge {
+  font-size: 9px;
+  line-height: 1;
+  background: rgba(13, 17, 28, 0.95);
+  border-radius: 3px;
+  padding: 2px 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  min-width: 12px;
+  min-height: 12px;
+}
+
+
+.stacked-badge.two-impostors {
+  color: #9b59b6;
+  border: 1px solid rgba(155, 89, 182, 0.4);
+}
+
+.stacked-badge.guess-word {
+  color: #f39c12;
+  border: 1px solid rgba(243, 156, 18, 0.4);
+}
+
+/* Phase indicators in lobby list */
+.phase-indicator {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+.lobby-phase {
+  background: rgba(106, 139, 255, 0.2);
+  color: #6a8bff;
+  border: 1px solid rgba(106, 139, 255, 0.3);
+}
+
+.in-game-phase {
+  background: rgba(231, 76, 60, 0.2);
+  color: #e74c3c;
+  border: 1px solid rgba(231, 76, 60, 0.3);
+}
+
+.results-phase {
+  background: rgba(46, 204, 113, 0.2);
+  color: #2ecc71;
+  border: 1px solid rgba(46, 204, 113, 0.3);
+}
+
+/* Toggle switch for impostor guess option */
+.impostor-guess-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 8px 0; /* Reduced margin to fit both toggles */
+  padding: 8px;
+  background: rgba(13, 17, 28, 0.6);
+  border-radius: 10px;
+  font-size: 13px; /* Slightly smaller font */
+  border: 1px solid rgba(106, 139, 255, 0.2);
+}
+
+/* Toggle switch styles */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 46px; /* Slightly smaller */
+  height: 22px; /* Slightly smaller */
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #2c3e50;
+  transition: .4s;
+  border-radius: 22px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 14px; /* Smaller */
+  width: 14px; /* Smaller */
+  left: 4px;
+  bottom: 4px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: #6a8bff;
+}
+
+input:checked + .slider:before {
+  transform: translateX(24px); /* Adjusted for smaller size */
+}
+
+input:disabled + .slider {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 13px; /* Smaller font */
+}
+
+.toggle-label.disabled {
+  color: #95a5a6;
+  cursor: not-allowed;
+}
+
+.info-icon {
+  cursor: pointer;
+  color: #6a8bff;
+  font-size: 12px; /* Smaller */
+  width: 14px; /* Smaller */
+  height: 14px; /* Smaller */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(106, 139, 255, 0.1);
+}
+
+.info-icon:hover {
+  background: rgba(106, 139, 255, 0.2);
+}
+
+/* ... [Add to existing CSS] ... */
+
+/* Vote count display */
+#voteCountDisplay {
+  text-align: center;
+  font-size: 14px;
+  padding: 5px;
+  background: rgba(0,0,0,0.2);
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+/* Clear votes button */
+#clearVotesBtn {
+  width: 100%;
+  margin-top: 5px;
+  background: linear-gradient(135deg, #e74c3c, #c0392b);
+}
+
+#clearVotesBtn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ff5b5b, #e74c3c);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(231, 76, 60, 0.3);
+}
+
+/* Selected vote button style */
+.vote-btn.selected {
+  background: #fff !important;
+  color: #000 !important;
+  font-weight: bold !important;
+}
+
+/* Game options container for both toggles on same line */
+/* Game options container for both toggles on same line */
+#gameOptionsContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 8px 0;
+  padding: 6px 8px;
+  background: rgba(13, 17, 28, 0.6);
+  border-radius: 10px;
+  border: 1px solid rgba(106, 139, 255, 0.2);
+  overflow: visible;
+}
+
+/* Game options row - NO flex-wrap to force same line */
+.game-options-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  position: relative;
+  overflow: visible;
+  flex-wrap: wrap; /* CRITICAL: Prevent wrapping */
+}
+
+/* Individual toggle container - compact for mobile */
+.game-option-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px; /* Reduced from 8px */
+  flex: 0 1 auto;
+  min-width: 0; /* Allow shrinking */
+}
+
+@media (max-width: 380px) {
+  .game-options-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+/* Separator between toggles */
+.toggle-separator {
+  color: rgba(106, 139, 255, 0.4);
+  font-weight: bold;
+  padding: 0 4px;
+  flex-shrink: 0;
+  line-height: 22px;
+  height: 22px;
+  display: none;
+  align-items: center;
+}
+}
+
+/* Toggle labels - more compact */
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 4px; /* Reduced from 8px */
+  color: #fff;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 12px; /* Reduced from 13px for mobile */
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.toggle-label.disabled {
+  color: #95a5a6;
+  cursor: not-allowed;
+}
+
+/* Toggle switch styles - slightly smaller for mobile */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 40px; /* Reduced from 46px */
+  height: 20px; /* Reduced from 22px */
+  flex-shrink: 0;
+}
+
+/* Hide the actual checkbox but keep it functional */
+.switch input[type="checkbox"] {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #2c3e50;
+  transition: .4s;
+  border-radius: 20px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px; /* Reduced from 18px */
+  width: 16px; /* Reduced from 18px */
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: #6a8bff;
+}
+
+input:checked + .slider:before {
+  transform: translateX(20px); /* Adjusted for smaller switch */
+}
+
+input:disabled + .slider {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Tooltip container */
+.tooltip-trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Info icon styling - smaller for mobile */
+.info-icon {
+  cursor: help;
+  color: #6a8bff;
+  font-size: 11px; /* Reduced from 12px */
+  width: 13px; /* Reduced from 14px */
+  height: 13px; /* Reduced from 14px */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(106, 139, 255, 0.1);
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.info-icon:hover {
+  background: rgba(106, 139, 255, 0.2);
+}
+
+/* Tooltip box - hidden by default */
+.tooltip {
+  visibility: hidden;
+  opacity: 0;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #1b2030, #0e111a);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: normal;
+  width: 200px;
+  text-align: center;
+  border: 1px solid rgba(106, 139, 255, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  pointer-events: none;
+  transition: opacity 0.2s, visibility 0.2s;
+}
+
+/* Tooltip arrow */
+.tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #1b2030;
+}
+
+/* Show tooltip on hover */
+.tooltip-trigger:hover .tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Mobile optimization - ensure tooltips don't go off screen */
+@media (max-width: 430px) {
+  .tooltip {
+    width: 180px;
+    font-size: 10px;
+  }
+  
+  .toggle-label {
+    font-size: 11px;
+  }
+  
+  .game-options-row {
+    gap: 6px;
+  }
+}
+
+/* Floating Tooltip Styles */
+.custom-tooltip {
+  position: absolute;
+  background-color: #34495e; /* Dark blue-grey background */
+  color: #ecf0f1;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  width: 280px;
+  max-width: 90vw; /* Don't overflow mobile screens */
+  z-index: 10000;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+  border: 1px solid #7f8c8d;
+  pointer-events: none; /* Allows clicking through it if needed, or set to auto to select text */
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+
+.custom-tooltip.visible {
+  opacity: 1;
+}
+
+/* Arrow for the tooltip (optional aesthetic) */
+.custom-tooltip::after {
+  content: "";
+  position: absolute;
+  bottom: 100%; /* At the top of the tooltip */
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: transparent transparent #34495e transparent;
+}
+
+.vote-btn.selected {
+  background: #fff !important;
+  color: #000 !important;
+  font-weight: bold !important;
+  border: 2px solid #6a8bff !important;
 }
