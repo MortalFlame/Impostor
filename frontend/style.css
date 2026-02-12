@@ -1462,6 +1462,6 @@ input:disabled + .slider {
 
 /* Add spacing above restart button in results screen */
 #gameOptionsContainerResults {
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
