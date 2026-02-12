@@ -744,22 +744,27 @@ input:disabled {
   flex-direction: row;
   gap: 8px;
   margin-top: 10px;
-  flex-wrap: wrap;        /* allows stacking on very small screens */
+  flex-wrap: nowrap;        /* allows stacking on very small screens */
+  justify-content: center;
 }
 
 .voting-action-row .button-base {
-  flex: 1 1 auto;
+  flex: 1;
   min-width: 120px;      /* prevents buttons from becoming too narrow */
+  max-width: 200px;
 }
 
 /* Optional: better touch targets on mobile */
 @media (max-width: 400px) {
   .voting-action-row {
+    flex-wrap: wrap;
     flex-direction: column;
+    align-items: stretch;
   }
   .voting-action-row .button-base {
     width: 100%;
     min-width: 0;
+    max-width: none;
   }
 }
 
