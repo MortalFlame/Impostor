@@ -3044,7 +3044,7 @@ if (disconnectedPlayersRemaining.length > 0) {
         } else if (lobby.phase === 'voting') {
           player.ws.send(JSON.stringify({
             type: 'startVoting',
-            players: lobby.players.map(p => p.name),
+            players: playersInGame.map(p => p.name),
             twoImpostorsMode: lobby.twoImpostorsOption || false,
             isSpectator: false
           }));
@@ -3132,7 +3132,7 @@ if (disconnectedPlayersRemaining.length > 0) {
         } else if (lobby.phase === 'voting') {
           spectator.ws.send(JSON.stringify({
             type: 'startVoting',
-            players: lobby.players.map(p => p.name),
+            players: playersInGame.map(p => p.name),
             twoImpostorsMode: lobby.twoImpostorsOption || false,
             isSpectator: true
           }));
