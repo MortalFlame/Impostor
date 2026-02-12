@@ -2756,6 +2756,11 @@ if (disconnectedPlayersRemaining.length > 0) {
     });
     
     broadcastLobbyList();
+    
+    // After a new player joins during results, check if restart should trigger
+if (lobby.phase === 'results') {
+  checkAndTriggerRestart(lobby, lobbyId);
+}
   }
 
   function handleSpectatorJoin(ws, msg, targetLobbyId, connectionId) {
@@ -2826,6 +2831,10 @@ if (disconnectedPlayersRemaining.length > 0) {
       });
       
       broadcastLobbyList();
+      // After a new player joins during results, check if restart should trigger
+if (lobby.phase === 'results') {
+  checkAndTriggerRestart(lobby, lobbyId);
+}
       return;
     }
     
