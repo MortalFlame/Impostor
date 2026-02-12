@@ -64,6 +64,34 @@
 
       <div id="players" class="players"></div>
       
+      <div id="gameOptionsContainer" style="display: none;">
+        <div class="game-options-row">
+          <div id="twoImpostorsToggle" class="game-option-toggle">
+            <label class="toggle-label">
+              <span class="switch">
+                <input type="checkbox" id="twoImpostorsCheckbox" onchange="toggleTwoImpostorsOption()">
+                <span class="slider"></span>
+              </span>
+              <span class="toggle-text">2 Impostors</span>
+              <span class="info-icon prevent-toggle" data-info="twoImpostors">ⓘ</span>
+            </label>
+          </div>
+          
+          <div class="toggle-separator">|</div>
+          
+          <div id="impostorGuessToggle" class="game-option-toggle">
+            <label class="toggle-label">
+              <span class="switch">
+                <input type="checkbox" id="impostorGuessCheckbox" onchange="toggleImpostorGuessOption()">
+                <span class="slider"></span>
+              </span>
+              <span class="toggle-text">Guess Word</span>
+              <span class="info-icon prevent-toggle" data-info="impostorGuess">ⓘ</span>
+            </label>
+          </div>
+        </div>
+      </div>
+      
       <!-- Lobby List Container -->
       <div id="lobbyListContainer" class="lobby-list-container">
         <div class="no-lobbies">Loading lobbies...</div>
@@ -111,34 +139,6 @@
 
       <div id="voting"></div>
       <div id="results"></div>
-
-            <div id="gameOptionsContainer" style="display: none;">
-        <div class="game-options-row">
-          <div id="twoImpostorsToggle" class="game-option-toggle">
-            <label class="toggle-label">
-              <span class="switch">
-                <input type="checkbox" id="twoImpostorsCheckbox" onchange="toggleTwoImpostorsOption()">
-                <span class="slider"></span>
-              </span>
-              <span class="toggle-text">2 Impostors</span>
-              <span class="info-icon prevent-toggle" data-info="twoImpostors">ⓘ</span>
-            </label>
-          </div>
-          
-          <div class="toggle-separator">|</div>
-          
-          <div id="impostorGuessToggle" class="game-option-toggle">
-            <label class="toggle-label">
-              <span class="switch">
-                <input type="checkbox" id="impostorGuessCheckbox" onchange="toggleImpostorGuessOption()">
-                <span class="slider"></span>
-              </span>
-              <span class="toggle-text">Guess Word</span>
-              <span class="info-icon prevent-toggle" data-info="impostorGuess">ⓘ</span>
-            </label>
-          </div>
-        </div>
-      </div>
 
       <button id="restart" class="button-base hidden">Restart Game</button>
 
