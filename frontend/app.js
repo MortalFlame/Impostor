@@ -1228,6 +1228,9 @@ function connect() {
         }
 
         if (d.type === 'turnUpdate') {
+          const resultsContainer = document.getElementById('gameOptionsContainerResults');
+  if (resultsContainer) resultsContainer.style.display = 'none';
+  
           // Preserve spectator join state during ongoing rounds
 if (isSpectator && d.wantsToJoinNextGame !== undefined) {
   spectatorWantsToJoin = d.wantsToJoinNextGame;
