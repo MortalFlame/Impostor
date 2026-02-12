@@ -3045,6 +3045,7 @@ if (disconnectedPlayersRemaining.length > 0) {
             }));
           }
         } else if (lobby.phase === 'voting') {
+          const playersInGame = getPlayersInGame(lobby);
           player.ws.send(JSON.stringify({
             type: 'startVoting',
             players: playersInGame.map(p => p.name),
@@ -3133,6 +3134,7 @@ if (disconnectedPlayersRemaining.length > 0) {
             }));
           }
         } else if (lobby.phase === 'voting') {
+          const playersInGame = getPlayersInGame(lobby);
           spectator.ws.send(JSON.stringify({
             type: 'startVoting',
             players: playersInGame.map(p => p.name),
