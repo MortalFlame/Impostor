@@ -737,6 +737,38 @@ input:disabled {
   filter: brightness(0.85);
 }
 
+/* Voting action row – ensures buttons stay side by side */
+.voting-action-row {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;        /* allows stacking on very small screens */
+}
+
+.voting-action-row .button-base {
+  flex: 1 1 auto;
+  min-width: 120px;      /* prevents buttons from becoming too narrow */
+}
+
+/* Optional: better touch targets on mobile */
+@media (max-width: 400px) {
+  .voting-action-row {
+    flex-direction: column;
+  }
+  .voting-action-row .button-base {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+.vote-submit {
+  background: linear-gradient(135deg, #27ae60, #2ecc71);
+}
+.vote-clear {
+  background: linear-gradient(135deg, #e74c3c, #c0392b);
+}
+
 .spectator-vote-btn {
   width: 100%;
   margin-top: 6px;
@@ -793,6 +825,8 @@ input:disabled {
 
 .word-hint-container div {
   display: flex;
+  flex: 1 1 100%;       /* full width on wrap */
+  text-align: center;
   align-items: center;
   min-width: 0;
 }
@@ -825,7 +859,14 @@ input:disabled {
   flex-shrink: 0;
   min-width: 20px;
   text-align: center;
+  display: inline;
 }
+
+@media (min-width: 400px) {
+  .word-hint-container div {
+    flex: 1 1 auto;
+    text-align: left;   /* restore original */
+  }
 
 /* Roles section - align role text */
 .role-results-item {
@@ -865,7 +906,8 @@ input:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 4px;
+  gap: 2px;
+  flex-wrap: wrap;
 }
 
 .vote-results-item .vote-voter {
@@ -942,7 +984,7 @@ input:disabled {
 .lobby-code-wrapper {
   position: relative;
   display: inline-block;
-  padding-right: 8px;
+  padding-right: 18px;
   margin-right: 6px;
 }
 
@@ -962,11 +1004,11 @@ input:disabled {
 
 /* Individual stacked badge */
 .stacked-badge {
-  font-size: 8px;
+  font-size: 9px;
   line-height: 1;
   background: rgba(13, 17, 28, 0.95);
   border-radius: 3px;
-  padding: 1.5px 2px;
+  padding: 2px 3px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1161,11 +1203,11 @@ input:disabled + .slider {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 4px;
   width: 100%;
   position: relative;
   overflow: visible;
-  flex-wrap: nowrap; /* CRITICAL: Prevent wrapping */
+  flex-wrap: wrap; /* CRITICAL: Prevent wrapping */
 }
 
 /* Individual toggle container - compact for mobile */
@@ -1177,6 +1219,12 @@ input:disabled + .slider {
   min-width: 0; /* Allow shrinking */
 }
 
+@media (max-width: 380px) {
+  .game-options-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
 /* Separator between toggles */
 .toggle-separator {
   color: rgba(106, 139, 255, 0.4);
@@ -1185,7 +1233,7 @@ input:disabled + .slider {
   flex-shrink: 0;
   line-height: 22px;
   height: 22px;
-  display: flex;
+  display: none;
   align-items: center;
 }
 
