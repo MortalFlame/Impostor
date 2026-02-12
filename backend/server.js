@@ -437,8 +437,6 @@ function checkGameEndConditions(lobby, lobbyId) {
     const secondsRemaining = Math.ceil((GAME_GRACE_PERIOD - (now - earliestDisconnectTime)) / 1000);
     console.log(`Impostor(s) disconnected for ${GAME_GRACE_PERIOD/1000 - secondsRemaining}s, ${secondsRemaining}s remaining`);
     return false;
-  } else {
-    impostors.forEach(p => p.lastDisconnectTime = null);
   }
   
   // Check if we have less than 3 connected players OR less than 3 players with an impostor
@@ -1260,9 +1258,14 @@ function checkAndTriggerRestart(lobby, lobbyId) {
     return;
   }
   
-  // Check if ALL connected players from previous game are ready
-  const allConnectedPlayersReady = connectedPlayersFromPreviousGame.length > 0 &&
-    connectedPlayersFromPreviousGame.every(p => lobby.restartReady.includes(p.id));
+  // Only count restart-ready players who are actually connected
+const connectedReadyPlayers = lobby.restartReady.filter(id => 
+  connectedPlayersFromPreviousGame.some(p => p.id === id)
+);
+
+const allConnectedPlayersReady = connectedPlayersFromPreviousGame.length > 0 &&
+  connectedPlayersFromPreviousGame.every(p => connectedReadyPlayers.includes(p.id));
+
   
   if (!allConnectedPlayersReady) {
     console.log(`Not all connected players ready: ${lobby.restartReady.length}/${connectedPlayersFromPreviousGame.length}`);
@@ -1275,9 +1278,17 @@ function checkAndTriggerRestart(lobby, lobbyId) {
     connectedPlayersFromPreviousGame.some(p => p.id === id)
   );
   const spectatorsWantingToJoin = lobby.spectatorsWantingToJoin.filter(id => {
-    const spectator = lobby.spectators.find(s => s.id === id);
-    return spectator && spectator.ws?.readyState === 1;
-  });
+  const spectator = lobby.spectators.find(s => s.id === id);
+  if (!spectator) return false;
+  
+  // Count if connected OR within grace period (consistent with restart handler)
+  const isConnected = spectator.ws?.readyState === 1;
+  const withinGracePeriod = spectator.lastDisconnectTime && 
+                            (now - spectator.lastDisconnectTime <= RESULTS_GRACE_PERIOD);
+  
+  return isConnected || withinGracePeriod;
+});
+
   
   const totalParticipants = readyConnectedPlayers.length + spectatorsWantingToJoin.length + newPlayersInResults.length;
   const minPlayersNeeded = lobby.twoImpostorsOption ? 5 : 3;
@@ -1405,6 +1416,30 @@ if (removedBeforeCurrentTurn > 0 && lobby.turn !== undefined) {
 if (lobby.turn !== undefined && lobby.turn >= lobby.players.length) {
   lobby.turn = lobby.players.length > 0 ? lobby.players.length - 1 : 0;
   console.log(`Turn index was out of bounds, reset to ${lobby.turn}`);
+}
+
+// Handle game state updates after player removals
+if (hasChanges && (lobby.phase === 'round1' || lobby.phase === 'round2')) {
+  const wasCurrentPlayerRemoved = lobby.turn < lobby.players.length && 
+                                   !lobby.players[lobby.turn];
+  
+  // Recalculate expected submissions
+  const playersInGame = getPlayersInGame(lobby);
+  lobby.expectedSubmissions = playersInGame.length;
+  console.log(`Cleanup: Updated expectedSubmissions to ${lobby.expectedSubmissions}`);
+  
+  // If current player was removed, add blank entry and advance turn
+  if (wasCurrentPlayerRemoved && lobby.players.length > 0) {
+    console.log(`Cleanup: Current player was removed, skipping their turn`);
+    skipCurrentPlayer(lobby, true);
+  } else {
+    // Check if round is now complete after removals
+    const currentRound = lobby.phase === 'round1' ? lobby.round1 : lobby.round2;
+    if (currentRound.length >= lobby.expectedSubmissions) {
+      console.log(`Cleanup: Round now complete after player removal`);
+      skipCurrentPlayer(lobby, false);
+    }
+  }
 }
 
   
