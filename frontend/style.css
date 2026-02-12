@@ -1465,7 +1465,3 @@ input:disabled + .slider {
   margin-bottom: 12px;
 }
 
-/* Optional: ensure the restart button itself has some top margin if the above isn't enough */
-#restart {
-  margin-top: 4px;
-}
