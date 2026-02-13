@@ -294,11 +294,11 @@ function isNameTakenInLobby(lobby, nameToCheck, excludePlayerId = null) {
 // Enhanced input sanitization
 function sanitizeInput(input, maxLength = 50) {
   if (typeof input !== 'string') return '';
-  
-  // Remove any HTML/script tags and limit length
   return input
     .replace(/<[^>]*>?/gm, '')
     .replace(/[<>]/g, '')
+    .replace(/'/g, '&#39;')   // ← add this
+    .replace(/"/g, '&quot;')   // ← add this
     .substring(0, maxLength)
     .trim();
 }
