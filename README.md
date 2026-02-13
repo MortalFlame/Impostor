@@ -1,47 +1,34 @@
-# Impostor Word Game
+# # Impostor Word Game
 
-A mobile-first, online multiplayer impostor word game.
-
-Players take turns giving clues related to a secret word, then vote to find the impostor.
+Mobile-first multiplayer word game. Give clues, find the impostor.
 
 ---
 
 ## Features
 
-- Web-based, mobile-first (works on phones)
-- 3–15 players per lobby
-- Random lobby code generation
-- **NEW: Lobby list showing available games with host and player count**
-- 2 turn-based rounds of word clues
-- Round 1 words stay visible during Round 2
-- 1 impostor per game
-- Voting phase with votes revealed at the end
-- Restart only when all players are ready
-- Civilian (green) / Impostor (red) roles
-- Handles reconnects and avoids duplicate players
-- Data-driven words & hints (`words.json`)
-
----
-
-## New Feature: Lobby List
-
-The lobby screen now displays all currently available lobbies:
-- Shows lobby code
-- Shows host name (who started the lobby)
-- Shows player count (players/spectators)
-- Shows when the lobby was created
-- One-click join without typing lobby codes
-- Auto-refreshes when new lobbies are created
+- 3–15 players per lobby  
+- **2 Impostors Mode** (optional, requires 5+ players)  
+- **Guess Word Mode** – ejected impostor gets 30s to guess the secret word  
+- Two rounds of word clues, voting, and full results  
+- Game options toggles in **lobby AND results screen** – settings carry over  
+- Lobby list – browse available games, one‑click join  
+- Spectators can join and opt into next game  
+- Grace periods for disconnections (lobby / game / results)  
+- Auto‑restart when all conditions met (ready players + spectators wanting to join)  
+- Fully responsive – works on phones, tablets, desktops  
 
 ---
 
 ## Tech Stack
 
-- Frontend: HTML, CSS, Vanilla JS
-- Backend: Node.js, Express, WebSockets (`ws`)
-- Hosting: GitHub + Render
+- **Frontend:** HTML, CSS, Vanilla JS  
+- **Backend:** Node.js, Express, WebSockets (`ws`)  
+- **Hosting:** Render  
 
 ---
+
+## Project Structure
+
 
 ## Project Structure
 
@@ -69,27 +56,36 @@ No environment variables required.
 
 ---
 
+
+---
+
+## Deploy to Render
+
+1. Push this repo to GitHub  
+2. Create a **New Web Service** on Render  
+3. Select **Node.js**  
+4. Set build command:  
+   `cd backend && npm install`  
+5. Set start command:  
+   `node backend/server.js`  
+6. Deploy – no environment variables needed  
+
+---
+
 ## How to Play
 
 1. Enter a nickname  
-2. **NEW: Browse available lobbies or create your own**  
-3. Click "Join" on any lobby or enter a lobby code manually  
-4. Start game (minimum 3 players)  
-5. Take turns giving related words (2 rounds)  
-6. Vote for the impostor  
-7. See results and votes  
-8. Restart when everyone clicks restart  
+2. Create a lobby or join an existing one from the list  
+3. **Host** can toggle game modes (2 Impostors / Guess Word) – changes apply immediately and persist for next game  
+4. Start game (minimum 3 players; 5+ for 2‑impostor mode)  
+5. **Round 1 & 2:** submit a word related to the secret word (30‑second turn timer)  
+6. **Vote** for the impostor(s) – 2‑impostor mode requires 2 votes  
+7. If **Guess Word** is on, ejected impostor(s) get 30 seconds to guess the secret word  
+8. Results screen shows roles, votes, and winner  
+9. Press **Restart** to play again – all ready players + spectators who clicked "Join Next Game" will be included  
+
+**Spectators:** click **"Join Next Game"** during the results screen to automatically join the next round as a player.
 
 ---
 
-## Notes
-
-- Players are identified using a unique browser ID
-- Temporary disconnects are handled gracefully
-- Words and hints can be easily expanded in `words.json`
-- Lobby list only shows lobbies in "lobby" phase (not in-game lobbies)
-- Lobby list automatically updates when lobbies are created/ended
-
----
-
-Enjoy playing! 🎮
+Enjoy! 🎮
