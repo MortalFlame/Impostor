@@ -39,6 +39,15 @@ const server = app.listen(PORT, HOST, () => {
     console.log('   Network: No network interfaces found (check WiFi)');
   }
   console.log('');
+  console.log('');
+  console.log('📋 TROUBLESHOOTING:');
+  console.log('   • On Termux device, open: http://localhost:' + PORT);
+  console.log('   • On other devices, use the Network address above');
+  console.log('   • Make sure all devices are on the SAME WiFi network');
+  console.log('   • On Android, you may need to disable battery optimization for Termux');
+  console.log('   • If still stuck on "Loading lobbies...", check browser console for errors');
+  console.log('');
+});
 });
 
 const words = JSON.parse(fs.readFileSync(__dirname + '/words.json', 'utf8'));
